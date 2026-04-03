@@ -8,13 +8,11 @@ const CACHE_NAME = 'jep-gss-v1';
 
 // App shell assets to pre-cache on install
 const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
-  '/app.js',
-  '/styles.css',
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+  './',
+  './index.html',
+  './app.js',
+  './styles.css',
+  './manifest.json',
 ];
 
 // ── INSTALL ──────────────────────────────────────────────────
@@ -51,8 +49,9 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Only handle same-origin requests
+  // Only handle same-origin, non-chrome-extension requests
   if (url.origin !== self.location.origin) return;
+  if (request.method !== 'GET') return;
 
   // Network-first strategy for API routes (future use)
   if (url.pathname.startsWith('/api/')) {

@@ -2,12 +2,12 @@
   "name": "JEP Golf Scoring System",
   "short_name": "JEP GSS",
   "description": "Mobile-first golf scoring with JEP shot ratings and GPS hole mapping",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#1a1a2e",
-  "scope": "/",
+  "scope": "./",
 
   "icons": [
     {
