@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="JEP GSS" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>JEP GSS</title>
+</head>
+<body>
+
+  <!-- =============================================
+       APP SHELL
+       One page app — screens are toggled via JS.
+       Active screen gets class "screen--active".
+  ============================================= -->
+  <div id="app">
+
+    <!-- NAV BAR (shown on all screens except course detection) -->
+    <nav id="nav" class="nav nav--hidden">
+      <button class="nav__btn" data-screen="hole-view">Hole</button>
+      <button class="nav__btn" data-screen="hole-map">Map</button>
+      <button class="nav__btn" data-screen="scorecard">Card</button>
+    </nav>
+
+    <!-- ── SCREEN: COURSE DETECTION ─────────────────
+         Entry point. Uses GPS to suggest nearby courses
+         or lets user search / enter manually.
+    ─────────────────────────────────────────────── -->
+    <section id="screen-course" class="screen screen--active">
+      <div class="screen__header">
+        <h1 class="app-title">JEP GSS</h1>
+        <p class="app-subtitle">Golf Scoring System</p>
+      </div>
+
+      <div class="screen__body">
+        <!-- GPS status indicator -->
+        <div id="gps-status" class="gps-status">
+          <span id="gps-icon" class="gps-status__icon">&#9679;</span>
+          <span id="gps-text" class="gps-status__text">Locating…</span>
+        </div>
+
+        <!-- Nearby courses list (populated by JS) -->
+        <div id="course-list" class="course-list">
+          <!-- Course cards injected here by app.js -->
+        </div>
+
+        <!-- Mock GPS button for desktop / HTTPS-blocked testing -->
+        <button id="mock-gps-btn" class="btn btn--mock">
+          &#127358; Use Mock Location (Testing)
+          <span class="btn--mock__sub">Pebble Beach Golf Links</span>
+        </button>
+
+        <div class="course-divider"><span>or enter manually</span></div>
+
+        <!-- Manual course entry fallback -->
+        <div class="course-manual">
+          <input
+            id="course-input"
+            class="input"
+            type="text"
+            placeholder="Course name…"
+            autocomplete="off"
+          />
+          <input
+            id="course-holes"
+            class="input"
+            type="number"
+            placeholder="Holes (9 or 18)"
+            min="9"
+            max="18"
+            value="18"
+          />
+          <button id="start-round-btn" class="btn btn--primary">Start Round</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SCREEN: HOLE VIEW ─────────────────────────
+         Main scoring screen. Shows live GSS as shots
+         are logged. JEP rating buttons are the primary
+         interaction — tap a rating to add a shot.
+    ─────────────────────────────────────────────── -->
+    <section id="screen-hole-view" class="screen">
+
+      <!-- Header: hole nav + par -->
+      <div class="screen__header">
+        <div class="hole-nav">
+          <button id="prev-hole-btn" class="hole-nav__btn" aria-label="Previous hole">&#8249;</button>
+          <div class="hole-nav__info">
+            <span id="hole-number" class="hole-nav__number">Hole 1</span>
+            <span id="hole-par" class="hole-nav__par">Par 4</span>
+          </div>
+          <button id="next-hole-btn" class="hole-nav__btn" aria-label="Next hole">&#8250;</button>
+        </div>
+      </div>
+
+      <div class="screen__body">
+
+        <!-- ── Live Stats Bar ───────────────────────
+             Three independent stats, updated on every shot.
+        ──────────────────────────────────────────── -->
+        <div class="hole-stats">
+          <div class="hole-stats__stat">
+            <span class="hole-stats__value" id="stat-strokes">—</span>
+            <span class="hole-stats__label">Strokes</span>
+          </div>
+          <div class="hole-stats__divider"></div>
+          <div class="hole-stats__stat">
+            <span class="hole-stats__value" id="stat-putts">—</span>
+            <span class="hole-stats__label">Putts</span>
+          </div>
+          <div class="hole-stats__divider"></div>
+          <div class="hole-stats__stat">
+            <span class="hole-stats__value hole-stats__value--rating" id="stat-rating">—</span>
+            <span class="hole-stats__label">Rating</span>
+          </div>
+        </div>
+
+        <!-- ── Shot Log ──────────────────────────────
+             One row per shot. Undo removes the last.
+        ──────────────────────────────────────────── -->
+        <div class="shot-log-section">
+          <div class="shot-log-header">
+            <span class="shot-log-header__title">
+              Shots <span id="stroke-count" class="shot-log-header__count">0</span>
+            </span>
+            <button id="undo-btn" class="undo-btn" disabled>&#8630; Undo</button>
+          </div>
+          <div id="shot-log" class="shot-log">
+            <!-- Rows injected by renderShotLog() -->
+          </div>
+        </div>
+
+        <!-- ── Log Shot ──────────────────────────────
+             Step 1: tap a club.
+             Step 2: tap a JEP rating → shot logged.
+             Putter only available after "On the Green".
+        ──────────────────────────────────────────── -->
+        <div class="add-shot">
+
+          <!-- Step 1: Club selection -->
+          <div class="add-shot__step">
+            <span class="add-shot__step-label">
+              <span class="add-shot__step-num">1</span> Select Club
+            </span>
+            <!-- Pending club indicator — shows which club is armed -->
+            <span id="pending-club-label" class="pending-club-label pending-club-label--empty">
+              tap a club below
+            </span>
+          </div>
+
+          <div class="club-grid" id="club-btns">
+            <!-- Woods -->
+            <button class="club-btn" data-club="D"  title="Driver">D</button>
+            <button class="club-btn" data-club="3W" title="3 Wood">3W</button>
+            <button class="club-btn" data-club="5W" title="5 Wood">5W</button>
+            <div class="club-grid__gap"></div>
+            <!-- Irons -->
+            <button class="club-btn" data-club="3I" title="3 Iron">3I</button>
+            <button class="club-btn" data-club="4I" title="4 Iron">4I</button>
+            <button class="club-btn" data-club="5I" title="5 Iron">5I</button>
+            <button class="club-btn" data-club="6I" title="6 Iron">6I</button>
+            <button class="club-btn" data-club="7I" title="7 Iron">7I</button>
+            <button class="club-btn" data-club="8I" title="8 Iron">8I</button>
+            <button class="club-btn" data-club="9I" title="9 Iron">9I</button>
+            <button class="club-btn" data-club="PW" title="Pitching Wedge">PW</button>
+            <!-- Wedges -->
+            <button class="club-btn" data-club="SW" title="Sand Wedge">SW</button>
+            <button class="club-btn" data-club="LW" title="Lob Wedge">LW</button>
+          </div>
+
+          <!-- On the Green — unlocks Putter -->
+          <button id="on-green-btn" class="btn btn--on-green">
+            ⛳ On the Green
+          </button>
+
+          <!-- Putter — hidden until On the Green is tapped -->
+          <button class="club-btn club-btn--putter" data-club="P"
+                  id="putter-btn" hidden title="Putter">
+            Putter
+          </button>
+
+          <!-- Step 2: JEP Rating — disabled until a club is selected -->
+          <div class="add-shot__step add-shot__step--rating">
+            <span class="add-shot__step-label">
+              <span class="add-shot__step-num">2</span> Rate the Shot
+            </span>
+          </div>
+
+          <div class="rating-grid" id="rating-btns">
+            <button class="rating-btn rating-btn--great"   data-rating="!"  title="Phenomenal (+3)" disabled>!</button>
+            <button class="rating-btn rating-btn--good2"   data-rating="++" title="Excellent (+2)"  disabled>++</button>
+            <button class="rating-btn rating-btn--good1"   data-rating="+"  title="Good (+1)"       disabled>+</button>
+            <button class="rating-btn rating-btn--ok"      data-rating="-"  title="OK (0)"          disabled>-</button>
+            <button class="rating-btn rating-btn--bad1"    data-rating="--" title="Bad (-1)"        disabled>--</button>
+            <button class="rating-btn rating-btn--bad2"    data-rating="#"  title="Chunker (-2)"    disabled>#</button>
+            <button class="rating-btn rating-btn--penalty" data-rating="OB" title="Out of Bounds (-3)" disabled>OB</button>
+            <button class="rating-btn rating-btn--penalty" data-rating="L"  title="Lost Ball (-3)"  disabled>L</button>
+          </div>
+
+          <!-- Rating value legend -->
+          <div class="rating-legend">
+            <span class="rating-legend__item"><b>!</b> +3</span>
+            <span class="rating-legend__item"><b>++</b> +2</span>
+            <span class="rating-legend__item"><b>+</b> +1</span>
+            <span class="rating-legend__item"><b>-</b> 0</span>
+            <span class="rating-legend__item"><b>--</b> -1</span>
+            <span class="rating-legend__item"><b>#</b> -2</span>
+            <span class="rating-legend__item"><b>OB/L</b> -3</span>
+          </div>
+        </div>
+
+        <!-- Save hole and advance to next -->
+        <button id="finish-hole-btn" class="btn btn--primary btn--full btn--save-hole">
+          Save Hole &#8594;
+        </button>
+
+      </div>
+    </section>
+
+    <!-- ── SCREEN: HOLE MAP ──────────────────────────
+         GPS-based hole visualizer.
+         Tee at bottom, green at top.
+         Shot markers plotted from GPS coordinates.
+    ─────────────────────────────────────────────── -->
+    <section id="screen-hole-map" class="screen">
+      <div class="screen__header">
+        <div class="hole-nav">
+          <button id="map-prev-hole-btn" class="hole-nav__btn">&#8249;</button>
+          <span id="map-hole-label" class="hole-nav__number">Hole 1</span>
+          <button id="map-next-hole-btn" class="hole-nav__btn">&#8250;</button>
+        </div>
+      </div>
+
+      <div class="screen__body screen__body--map">
+        <!-- SVG canvas for hole visualization -->
+        <!-- Tee marker at bottom, flag/green at top, shot path in between -->
+        <div id="hole-map-container" class="hole-map-container">
+          <svg id="hole-map-svg" class="hole-map-svg" viewBox="0 0 300 500"
+               xmlns="http://www.w3.org/2000/svg">
+            <!-- Background fairway shape (generated by JS) -->
+            <g id="map-fairway"></g>
+            <!-- Shot path polyline -->
+            <polyline id="map-shot-path" class="map-shot-path" points="" />
+            <!-- Shot markers (circles) -->
+            <g id="map-shot-markers"></g>
+            <!-- Tee marker (bottom) -->
+            <g id="map-tee-marker"></g>
+            <!-- Green / flag marker (top) -->
+            <g id="map-green-marker"></g>
+          </svg>
+
+          <!-- Legend -->
+          <div class="map-legend">
+            <span class="map-legend__item map-legend__item--tee">Tee</span>
+            <span class="map-legend__item map-legend__item--green">Green</span>
+          </div>
+        </div>
+
+        <!-- GPS capture button for current location -->
+        <button id="capture-gps-btn" class="btn btn--secondary btn--full">
+          &#9678; Mark Shot Location
+        </button>
+      </div>
+    </section>
+
+    <!-- ── SCREEN: SCORECARD ─────────────────────────
+         18-hole table: Hole | Par | Strokes | Putts | Rating
+         Front 9 / Back 9 split with totals row.
+    ─────────────────────────────────────────────── -->
+    <section id="screen-scorecard" class="screen">
+      <div class="screen__header">
+        <h2 class="screen__title">Scorecard</h2>
+        <div id="scorecard-course-name" class="scorecard-meta"></div>
+      </div>
+
+      <div class="screen__body screen__body--scorecard">
+        <!-- Scrollable table wrapper for narrow screens -->
+        <div class="scorecard-scroll">
+          <table class="scorecard-table" id="scorecard-table">
+            <thead>
+              <tr>
+                <th>Hole</th>
+                <th>Par</th>
+                <th>Strokes</th>
+                <th>Putts</th>
+                <th>Rating</th>
+              </tr>
+            </thead>
+            <tbody id="scorecard-body">
+              <!-- Rows generated by app.js -->
+            </tbody>
+            <tfoot id="scorecard-foot">
+              <!-- Totals rows generated by app.js -->
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Round summary stats -->
+        <div id="round-summary" class="round-summary">
+          <!-- Injected by app.js after round complete -->
+        </div>
+
+        <!-- Actions -->
+        <div class="scorecard-actions">
+          <button id="export-btn" class="btn btn--secondary">Export Round</button>
+          <button id="new-round-btn" class="btn btn--primary">New Round</button>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /#app -->
+
+  <!-- Toast notification (shown briefly for special events) -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

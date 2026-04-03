@@ -1,0 +1,999 @@
+/* =============================================================
+   JEP GSS — Stylesheet
+   Mobile-first. Clean white/gray palette. No frameworks.
+   ============================================================= */
+
+/* ── RESET & BASE ─────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Colors */
+  --color-bg:         #f5f5f7;
+  --color-surface:    #ffffff;
+  --color-border:     #e0e0e0;
+  --color-text:       #1a1a2e;
+  --color-text-muted: #6b7280;
+  --color-primary:    #1a6b3c;   /* golf green */
+  --color-primary-dk: #145530;
+  --color-accent:     #2563eb;
+
+  /* Rating chip colors */
+  --color-great:   #f59e0b;   /* gold — phenomenal */
+  --color-good2:   #10b981;   /* emerald — excellent */
+  --color-good1:   #34d399;   /* light green — good */
+  --color-ok:      #9ca3af;   /* gray — ok */
+  --color-bad1:    #f97316;   /* orange — bad */
+  --color-bad2:    #ef4444;   /* red — chunker */
+  --color-penalty: #7c3aed;   /* purple — OB / lost */
+
+  /* Score diff colors */
+  --color-eagle:  #f59e0b;
+  --color-birdie: #10b981;
+  --color-par:    var(--color-text);
+  --color-bogey:  #f97316;
+  --color-double: #ef4444;
+
+  /* Spacing */
+  --space-xs:  4px;
+  --space-sm:  8px;
+  --space-md:  16px;
+  --space-lg:  24px;
+  --space-xl:  32px;
+
+  /* Typography */
+  --font-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', monospace;
+  --text-xs:   12px;
+  --text-sm:   14px;
+  --text-md:   16px;
+  --text-lg:   20px;
+  --text-xl:   28px;
+
+  /* Radii */
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.10);
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-base);
+  font-size: var(--text-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* app manages scroll per-screen */
+}
+
+/* ── APP SHELL ────────────────────────────────────────────── */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;          /* dynamic viewport height — accounts for iOS safari chrome */
+  height: 100vh;           /* fallback */
+  overflow: hidden;
+}
+
+/* ── NAV BAR ──────────────────────────────────────────────── */
+.nav {
+  display: flex;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-xs) 0;
+  padding-bottom: max(var(--space-xs), env(safe-area-inset-bottom));
+  order: 2;                /* push nav to bottom */
+  flex-shrink: 0;
+}
+
+.nav--hidden {
+  display: none;
+}
+
+.nav__btn {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: var(--space-sm) 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-family: var(--font-base);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  transition: color 0.15s;
+}
+
+.nav__btn--active {
+  color: var(--color-primary);
+}
+
+/* ── SCREENS ──────────────────────────────────────────────── */
+.screen {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  order: 1;
+}
+
+.screen--active {
+  display: flex;
+}
+
+.screen__header {
+  background: var(--color-surface);
+  padding: var(--space-md);
+  padding-top: max(var(--space-md), env(safe-area-inset-top));
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.screen__title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.screen__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-md);
+  -webkit-overflow-scrolling: touch;
+}
+
+.screen__body--map {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen__body--scorecard {
+  padding: 0;
+}
+
+/* ── COURSE DETECTION SCREEN ──────────────────────────────── */
+.app-title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: -0.5px;
+}
+
+.app-subtitle {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* GPS status */
+.gps-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.gps-status__icon {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.gps-status--locating .gps-status__icon { color: #f59e0b; }
+.gps-status--active   .gps-status__icon { color: #10b981; }
+.gps-status--error    .gps-status__icon { color: #ef4444; }
+
+.gps-status__text {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* Course list */
+.course-list {
+  margin-bottom: var(--space-lg);
+}
+
+.course-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-sm);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.course-card:active {
+  border-color: var(--color-primary);
+}
+
+.course-card__name {
+  font-weight: 600;
+}
+
+.course-card__distance {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* Mock GPS / testing button */
+.btn--mock {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-md);
+  background: #fefce8;
+  border: 2px dashed #ca8a04;
+  border-radius: var(--radius-md);
+  color: #854d0e;
+  font-size: var(--text-md);
+  font-weight: 700;
+  font-family: var(--font-base);
+  cursor: pointer;
+  margin-bottom: var(--space-md);
+  touch-action: manipulation;
+}
+
+.btn--mock:active {
+  background: #fef08a;
+}
+
+.btn--mock__sub {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: #a16207;
+}
+
+/* Divider between mock button and manual entry */
+.course-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.course-divider::before,
+.course-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+/* Manual entry */
+.course-manual {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* ── HOLE VIEW SCREEN ─────────────────────────────────────── */
+.hole-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hole-nav__btn {
+  background: none;
+  border: none;
+  font-size: 32px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0 var(--space-sm);
+  line-height: 1;
+  /* Large tap target */
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hole-nav__btn:disabled {
+  opacity: 0.25;
+}
+
+.hole-nav__info {
+  text-align: center;
+}
+
+.hole-nav__number {
+  display: block;
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.hole-nav__par {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* ── HOLE STATS BAR ───────────────────────────────────────── */
+/* Three independent stats: Strokes | Putts | Rating */
+.hole-stats {
+  display: flex;
+  align-items: stretch;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.hole-stats__stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md) var(--space-sm);
+}
+
+.hole-stats__divider {
+  width: 1px;
+  background: var(--color-border);
+  margin: var(--space-sm) 0;
+}
+
+.hole-stats__value {
+  display: block;
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1px;
+}
+
+.hole-stats__value--rating {
+  color: var(--color-text);
+}
+
+.hole-stats__label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* Rating color: positive = green, negative = red */
+.rating--pos { color: var(--color-good2); }
+.rating--neg { color: var(--color-bad2);  }
+
+/* ── SHOT LOG ─────────────────────────────────────────────── */
+.shot-log-section {
+  margin-bottom: var(--space-md);
+}
+
+.shot-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-xs) var(--space-xs);
+}
+
+.shot-log-header__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.shot-log-header__count {
+  display: inline-block;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  min-width: 20px;
+  padding: 0 5px;
+  text-align: center;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-text);
+  vertical-align: middle;
+}
+
+.undo-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 3px var(--space-sm);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.undo-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.undo-btn:not(:disabled):active {
+  background: var(--color-bg);
+}
+
+.shot-log {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  min-height: 44px;
+}
+
+.shot-log__empty {
+  padding: var(--space-md);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+  font-style: italic;
+}
+
+.shot-row {
+  display: flex;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  gap: var(--space-sm);
+}
+
+.shot-row:last-child {
+  border-bottom: none;
+}
+
+/* Last shot gets a subtle highlight — most recently added */
+.shot-row:last-child {
+  background: #f0fdf4;
+}
+
+.shot-row__num {
+  width: 18px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.shot-row__club {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  min-width: 32px;
+  color: var(--color-text-muted);
+}
+
+.shot-row__desc {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.shot-row__val {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  min-width: 28px;
+  text-align: right;
+}
+
+.shot-row__val--pos { color: var(--color-good2); }
+.shot-row__val--neg { color: var(--color-bad2);  }
+.shot-row__val--zero { color: var(--color-text-muted); }
+
+/* ── ADD SHOT ─────────────────────────────────────────────── */
+.add-shot {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Step header row: number badge + label + pending club status */
+.add-shot__step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.add-shot__step--rating {
+  margin-top: var(--space-md);
+}
+
+.add-shot__step-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.add-shot__step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: var(--color-text-muted);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+/* "Driver — now rate it" / "tap a club below" */
+.pending-club-label {
+  flex: 1;
+  font-size: var(--text-sm);
+  text-align: right;
+  font-weight: 500;
+}
+
+.pending-club-label--empty {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.pending-club-label--armed {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+/* ── CLUB GRID ────────────────────────────────────────────── */
+/* 4 columns; gap cell used to align woods row */
+.club-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.club-grid__gap {
+  /* invisible spacer to fill 4th column on woods row */
+}
+
+.club-btn {
+  min-height: 44px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.08s, border-color 0.08s, color 0.08s;
+}
+
+.club-btn:active {
+  background: var(--color-border);
+}
+
+/* Selected / armed state */
+.club-btn--selected {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(26,107,60,.35);
+}
+
+/* Putter — full-width, special green style */
+.club-btn--putter {
+  grid-column: 1 / -1;
+  min-height: 48px;
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #0369a1;
+  font-size: var(--text-md);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-xs);
+}
+
+.club-btn--putter.club-btn--selected {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #fff;
+}
+
+/* On the Green button */
+.btn--on-green {
+  width: 100%;
+  min-height: 44px;
+  background: #f0fdf4;
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-family: var(--font-base);
+  cursor: pointer;
+  touch-action: manipulation;
+  margin-bottom: var(--space-xs);
+}
+
+.btn--on-green:active {
+  background: #dcfce7;
+}
+
+/* ── RATING GRID ──────────────────────────────────────────── */
+.rating-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.rating-btn {
+  min-height: 52px;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-lg);
+  font-weight: 800;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  color: #fff;
+  letter-spacing: 0.02em;
+  transition: transform 0.08s, box-shadow 0.08s, opacity 0.1s;
+  box-shadow: 0 2px 0 rgba(0,0,0,.2);
+  touch-action: manipulation;
+}
+
+.rating-btn:not(:disabled):active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+/* Disabled: grayed out and not interactive */
+.rating-btn:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+  box-shadow: none;
+  filter: grayscale(40%);
+}
+
+.rating-btn--flash {
+  filter: brightness(1.25);
+}
+
+.rating-btn--great   { background: var(--color-great); }
+.rating-btn--good2   { background: var(--color-good2); }
+.rating-btn--good1   { background: var(--color-good1); color: #1a5e3a; }
+.rating-btn--ok      { background: var(--color-ok);    color: var(--color-text); }
+.rating-btn--bad1    { background: var(--color-bad1); }
+.rating-btn--bad2    { background: var(--color-bad2); }
+.rating-btn--penalty { background: var(--color-penalty); }
+
+/* Rating legend */
+.rating-legend {
+  display: flex;
+  justify-content: space-between;
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--color-border);
+}
+
+.rating-legend__item {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.rating-legend__item b {
+  display: block;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+/* ── SHOT LOG DIVIDER (putting section) ───────────────────── */
+.shot-log__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  background: #e0f2fe;
+  border-top: 1px solid #bae6fd;
+  border-bottom: 1px solid #bae6fd;
+}
+
+.shot-log__divider span {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #0369a1;
+}
+
+/* Putt rows get a subtle blue tint */
+.shot-row--putt {
+  background: #f0f9ff;
+}
+
+/* Penalty rows (OB / Lost Ball) get a subtle red tint */
+.shot-row--penalty {
+  background: #fff5f5;
+}
+
+/* "Penalty +1" badge shown inline in the shot row */
+.penalty-badge {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: #b91c1c;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius-full);
+  padding: 1px 7px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Save Hole button — extra height for easy tap */
+.btn--save-hole {
+  min-height: 52px;
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-md);
+}
+
+/* ── HOLE MAP SCREEN ──────────────────────────────────────── */
+.hole-map-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #e8f5e9;   /* light green background */
+}
+
+.hole-map-svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* SVG elements — styled here for easy tuning */
+.map-shot-path {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  stroke-linecap: round;
+}
+
+.map-legend {
+  position: absolute;
+  bottom: var(--space-md);
+  left: var(--space-md);
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.map-legend__item {
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+}
+
+.map-legend__item--tee {
+  background: #fff3cd;
+  color: #7c5c00;
+}
+
+.map-legend__item--green {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+/* ── SCORECARD SCREEN ─────────────────────────────────────── */
+.scorecard-meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-xs);
+}
+
+.scorecard-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scorecard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.scorecard-table th,
+.scorecard-table td {
+  padding: var(--space-sm) var(--space-md);
+  text-align: center;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.scorecard-table th {
+  background: var(--color-bg);
+  font-weight: 600;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.scorecard-table td:first-child {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.scorecard-row--pending td {
+  color: var(--color-text-muted);
+}
+
+.scorecard-row--subtotal td {
+  background: #f0fdf4;
+  font-weight: 600;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.scorecard-row--total td {
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Score vs par color coding */
+.score--eagle  { color: var(--color-eagle);  font-weight: 700; }
+.score--birdie { color: var(--color-birdie); font-weight: 700; }
+.score--par    { color: var(--color-par);    }
+.score--bogey  { color: var(--color-bogey);  }
+.score--double { color: var(--color-double); font-weight: 700; }
+
+.round-summary {
+  padding: var(--space-md);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+}
+
+.scorecard-actions {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+/* ── RATING CHIPS (shared) ────────────────────────────────── */
+/* Used in shot log rows */
+.rating-chip {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: #fff;
+  line-height: 1.4;
+}
+
+.rating-chip--great   { background: var(--color-great); }
+.rating-chip--good2   { background: var(--color-good2); }
+.rating-chip--good1   { background: var(--color-good1); color: var(--color-text); }
+.rating-chip--ok      { background: var(--color-ok);    color: var(--color-text); }
+.rating-chip--bad1    { background: var(--color-bad1); }
+.rating-chip--bad2    { background: var(--color-bad2); }
+.rating-chip--penalty { background: var(--color-penalty); }
+
+/* ── FORM CONTROLS ────────────────────────────────────────── */
+.input,
+.select {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  font-family: var(--font-base);
+  background: var(--color-surface);
+  color: var(--color-text);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(26,107,60,.15);
+}
+
+/* ── BUTTONS ──────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-md);
+  border: none;
+  font-size: var(--text-md);
+  font-weight: 600;
+  font-family: var(--font-base);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn:active {
+  opacity: 0.8;
+}
+
+.btn--full {
+  width: 100%;
+}
+
+.btn--primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.btn--secondary {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+/* ── TOAST ────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  /* left + bottom set dynamically by JS to anchor above the ! button */
+  transform: translateX(-50%) translateY(10px);
+  background: rgba(20, 20, 20, 0.93);
+  color: #fff;
+  font-size: 42px;          /* 3× the original 14px */
+  font-style: italic;
+  font-weight: 600;
+  padding: 20px 40px;
+  border-radius: 20px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 999;
+}
+
+.toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ── UTILITIES ────────────────────────────────────────────── */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+}
