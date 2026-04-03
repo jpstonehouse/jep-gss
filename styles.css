@@ -160,6 +160,13 @@ html, body {
 }
 
 /* ── COURSE DETECTION SCREEN ──────────────────────────────── */
+.app-logo {
+  display: block;
+  width: 120px;
+  height: auto;
+  margin: 0 auto var(--space-sm);
+}
+
 .app-title {
   font-size: var(--text-xl);
   font-weight: 700;

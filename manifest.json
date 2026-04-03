@@ -11,13 +11,13 @@
 
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "JEP%20GSS%20Logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "JEP%20GSS%20Logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -34,7 +34,7 @@
       "short_name": "New Round",
       "description": "Start a new golf round",
       "url": "/?action=new-round",
-      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "JEP%20GSS%20Logo.png", "sizes": "192x192" }]
     }
   ]
 }
