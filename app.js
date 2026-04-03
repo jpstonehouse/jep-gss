@@ -48,6 +48,42 @@ if ('serviceWorker' in navigator) {
 const DEFAULT_PARS = [4,4,3,4,5,3,4,5,4, 4,3,5,4,4,3,5,4,4]; // generic 18-hole par layout
 
 // =============================================================
+// RAPIDAPI — Golf Course API
+// =============================================================
+const RAPIDAPI = {
+  key:  '2a24284d6fmsh8999c4e198b104ap10e751jsnc6bc52f9f4da',
+  host: 'golf-course-api.p.rapidapi.com',
+};
+
+// =============================================================
+// LOCAL COURSES — built-in course data with full GPS green coords
+// These are checked first (by proximity) before calling the API.
+// =============================================================
+const LOCAL_COURSES = [
+  {
+    name: 'Zaca Creek Golf Course',
+    totalHoles: 9,
+    // Used for proximity detection — center of the course
+    center: { lat: 34.608393, lng: -120.197016 },
+    holes: [
+      { par: 3, yardage: 166, green: { lat: 34.608393, lng: -120.197016 } },
+      { par: 3, yardage: 104, green: { lat: 34.608374, lng: -120.196443 } },
+      { par: 3, yardage: 166, green: { lat: 34.608256, lng: -120.194289 } },
+      { par: 4, yardage: 214, green: { lat: 34.607687, lng: -120.196246 } },
+      { par: 3, yardage: 193, green: { lat: 34.607619, lng: -120.197217 } },
+      { par: 4, yardage: 257, green: { lat: 34.608580, lng: -120.199702 } },
+      { par: 3, yardage:  82, green: { lat: 34.609021, lng: -120.198605 } },
+      { par: 3, yardage: 145, green: { lat: 34.607812, lng: -120.197695 } },
+      { par: 3, yardage: 185, green: { lat: 34.609064, lng: -120.198347 } },
+    ],
+  },
+];
+
+// Runtime cache of the last course search results (not persisted)
+let courseSearchResults = [];
+let courseSearchFired   = false; // prevent repeat searches on every GPS update
+
+// =============================================================
 // MOCK COURSE — Pebble Beach Golf Links
 // Used for desktop testing when GPS is unavailable (no HTTPS).
 // Pars are real. GPS coordinates are approximate/fake but
@@ -176,6 +212,166 @@ function calcStrokes(hole) {
 /** Returns true if a shot carries a penalty stroke. */
 function isPenaltyShot(shot) {
   return shot.rating === 'OB' || shot.rating === 'L';
+}
+
+// =============================================================
+// DISTANCE CALCULATION
+// =============================================================
+
+/**
+ * Haversine distance between two GPS coordinates, returned in yards.
+ * @param {number} lat1
+ * @param {number} lng1
+ * @param {number} lat2
+ * @param {number} lng2
+ * @returns {number} distance in yards, rounded to nearest yard
+ */
+function haversineDistanceYards(lat1, lng1, lat2, lng2) {
+  const R  = 6371000; // Earth radius in metres
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lng2 - lng1) * Math.PI / 180;
+  const a  = Math.sin(Δφ / 2) ** 2
+           + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  const metres = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(metres * 1.09361);
+}
+
+// =============================================================
+// COURSE SELECTION
+// =============================================================
+
+/**
+ * Start a round from a course object (local or API).
+ * Courses with full hole data get green GPS coords; API-only courses get
+ * default pars and no GPS data.
+ * @param {{ name: string, totalHoles: number, holes: Array|null }} course
+ */
+function startRoundFromCourse(course) {
+  let holes;
+
+  if (course.holes && course.holes.length > 0) {
+    holes = course.holes.map((h, i) => ({
+      holeNumber: i + 1,
+      par:        h.par,
+      yardage:    h.yardage ?? null,
+      green:      h.green   ?? null,
+      shots:      [],
+      onGreen:    false,
+      complete:   false,
+    }));
+  } else {
+    holes = initHoles(course.totalHoles || 18);
+  }
+
+  setState({
+    courseName:   course.name,
+    totalHoles:   holes.length,
+    holes,
+    currentHole:  1,
+    pendingClub:  null,
+    mockMode:     false,
+    activeScreen: 'hole-view',
+  });
+}
+
+/**
+ * Search for courses near the given GPS coordinates.
+ * Checks LOCAL_COURSES by proximity first, then calls RapidAPI.
+ * Updates courseSearchResults and re-renders the course list.
+ * @param {number} lat
+ * @param {number} lng
+ */
+async function searchNearbyCourses(lat, lng) {
+  renderCourseList('loading');
+  const results = [];
+
+  // ── Local courses ────────────────────────────────────────
+  LOCAL_COURSES.forEach(course => {
+    const dist = haversineDistanceYards(lat, lng, course.center.lat, course.center.lng);
+    if (dist < 26400) { // within ~15 miles
+      results.push({ ...course, distanceYards: dist, source: 'local' });
+    }
+  });
+
+  // ── RapidAPI ─────────────────────────────────────────────
+  try {
+    const url = `https://${RAPIDAPI.host}/courses?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`;
+    const res = await fetch(url, {
+      headers: {
+        'X-RapidAPI-Key':  RAPIDAPI.key,
+        'X-RapidAPI-Host': RAPIDAPI.host,
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      // Handle both array and object-wrapped responses
+      const list = Array.isArray(data) ? data : (data.courses ?? data.data ?? []);
+
+      list.forEach(c => {
+        const courseLat  = c.location?.lat ?? c.lat ?? null;
+        const courseLng  = c.location?.lng ?? c.lng ?? null;
+        const courseName = c.club_name ?? c.course_name ?? c.name ?? null;
+        if (!courseLat || !courseLng || !courseName) return;
+
+        // Skip if already covered by a local course of the same name
+        if (results.find(r => r.name === courseName)) return;
+
+        const dist = haversineDistanceYards(lat, lng, courseLat, courseLng);
+        if (dist < 26400) {
+          results.push({
+            name:         courseName,
+            totalHoles:   c.holes ?? c.num_holes ?? 18,
+            center:       { lat: courseLat, lng: courseLng },
+            holes:        null, // no hole-level GPS data from API
+            distanceYards: dist,
+            source:       'api',
+          });
+        }
+      });
+    } else {
+      console.warn('[Courses] RapidAPI responded', res.status, await res.text());
+    }
+  } catch (err) {
+    console.warn('[Courses] RapidAPI fetch failed:', err.message);
+  }
+
+  results.sort((a, b) => a.distanceYards - b.distanceYards);
+  courseSearchResults = results;
+  renderCourseList('results');
+}
+
+/**
+ * Render the course list in one of three states: loading | results | empty.
+ * @param {'loading'|'results'} state
+ */
+function renderCourseList(listState) {
+  const container = document.getElementById('course-list');
+  if (!container) return;
+
+  if (listState === 'loading') {
+    container.innerHTML = `<p class="course-list__status">Searching for nearby courses…</p>`;
+    return;
+  }
+
+  if (courseSearchResults.length === 0) {
+    container.innerHTML = `<p class="course-list__status">No courses found nearby.</p>`;
+    return;
+  }
+
+  container.innerHTML = courseSearchResults.map((course, idx) => {
+    const distMiles = (course.distanceYards / 1760).toFixed(1);
+    const badge = course.source === 'local'
+      ? `<span class="course-card__badge">Built-in</span>`
+      : '';
+    return `
+      <div class="course-card" data-course-idx="${idx}">
+        <div class="course-card__name">${course.name} ${badge}</div>
+        <div class="course-card__detail">${course.totalHoles} holes · ${distMiles} mi away</div>
+      </div>`;
+  }).join('');
 }
 
 /** Format a rating number as "+4", "-2", or "0". */
@@ -383,14 +579,16 @@ function startGPS() {
   updateGPSStatus('locating', 'Locating…');
 
   const onSuccess = (pos) => {
-    setState({
-      gpsPosition: {
-        lat:      pos.coords.latitude,
-        lng:      pos.coords.longitude,
-        accuracy: pos.coords.accuracy,
-      }
-    });
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    setState({ gpsPosition: { lat, lng, accuracy: pos.coords.accuracy } });
     updateGPSStatus('active', `GPS Active — ±${Math.round(pos.coords.accuracy)}m`);
+
+    // Trigger course search on the first GPS fix only
+    if (!courseSearchFired) {
+      courseSearchFired = true;
+      searchNearbyCourses(lat, lng);
+    }
   };
 
   const onError = (err) => {
@@ -481,8 +679,14 @@ function renderNav() {
 
 // ── Course Screen ────────────────────────────────────────────
 function renderCourseScreen() {
-  // GPS status is updated separately via updateGPSStatus()
-  // TODO: populate course-list from GPS + local course database
+  // Reset search state when returning to this screen so a fresh search
+  // can be triggered next time the user taps Find My Location
+  if (!state.gpsPosition) {
+    courseSearchFired = false;
+    courseSearchResults = [];
+    const container = document.getElementById('course-list');
+    if (container) container.innerHTML = '';
+  }
 }
 
 // ── Hole View ────────────────────────────────────────────────
@@ -494,6 +698,21 @@ function renderHoleView() {
   document.getElementById('hole-number').textContent = `Hole ${hole.holeNumber}`;
   document.getElementById('hole-par').textContent =
     `Par ${hole.par}${hole.yardage ? ' · ' + hole.yardage + ' yds' : ''}`;
+
+  // Live distance to green (only when hole has green GPS coords and we have a position)
+  const distEl = document.getElementById('hole-distance');
+  if (distEl) {
+    if (hole.green && state.gpsPosition) {
+      const yds = haversineDistanceYards(
+        state.gpsPosition.lat, state.gpsPosition.lng,
+        hole.green.lat, hole.green.lng
+      );
+      distEl.textContent = `${yds} yds to green`;
+      distEl.hidden = false;
+    } else {
+      distEl.hidden = true;
+    }
+  }
 
   // Prev/next button states
   document.getElementById('prev-hole-btn').disabled = state.currentHole <= 1;
@@ -732,6 +951,14 @@ function wireEvents() {
     document.getElementById('find-location-btn').hidden = true;
     document.getElementById('gps-status').classList.remove('gps-status--hidden');
     startGPS();
+  });
+
+  // ── Course card selection ────────────────────────────────
+  document.getElementById('course-list').addEventListener('click', (e) => {
+    const card = e.target.closest('[data-course-idx]');
+    if (!card) return;
+    const course = courseSearchResults[parseInt(card.dataset.courseIdx, 10)];
+    if (course) startRoundFromCourse(course);
   });
 
   // ── Mock GPS button ──────────────────────────────────────

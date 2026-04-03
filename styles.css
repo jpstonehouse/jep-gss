@@ -252,12 +252,35 @@ html, body {
 
 .course-card__name {
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
 }
 
-.course-card__distance {
+.course-card__detail {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
   margin-top: 2px;
+}
+
+.course-card__badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
+  vertical-align: middle;
+}
+
+/* Loading / empty state text inside course list */
+.course-list__status {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-md) 0;
+  font-style: italic;
 }
 
 /* Mock GPS / testing button */
@@ -375,6 +398,14 @@ html, body {
   display: block;
   font-size: var(--text-sm);
   color: var(--color-text-muted);
+}
+
+.hole-nav__distance {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-top: 1px;
 }
 
 /* ── HOLE STATS BAR ───────────────────────────────────────── */
