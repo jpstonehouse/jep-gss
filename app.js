@@ -242,6 +242,105 @@ function haversineDistanceYards(lat1, lng1, lat2, lng2) {
 }
 
 // =============================================================
+// MOCK GPS HELPERS
+// =============================================================
+
+/**
+ * Offset a lat/lng by a distance in yards (north positive, east positive).
+ */
+function offsetGPS(lat, lng, northYards, eastYards) {
+  const YARDS_PER_DEG_LAT = 121518;
+  return {
+    lat: lat + northYards / YARDS_PER_DEG_LAT,
+    lng: lng + eastYards / (YARDS_PER_DEG_LAT * Math.cos(lat * Math.PI / 180)),
+  };
+}
+
+/**
+ * Estimate a realistic carry distance (yards) for a given club in mock mode.
+ */
+function estimateMockShotDist(club) {
+  const DISTS = {
+    D: 240, '3W': 215, '5W': 200,
+    '3I': 185, '4I': 175, '5I': 165, '6I': 155, '7I': 145, '8I': 135, '9I': 125,
+    PW: 110, SW: 80, LW: 60,
+    P: 12,
+  };
+  const base = DISTS[club] ?? 120;
+  // ±15% random variation
+  return base * (0.85 + Math.random() * 0.30);
+}
+
+/**
+ * Generate a mock GPS position for a shot in mock mode.
+ * Positions shots along a realistic path from tee toward the green.
+ * @param {HoleData} hole
+ * @param {Shot[]} prevShots  shots already logged on this hole
+ * @param {string} club
+ * @returns {{lat:number, lng:number}}
+ */
+function mockShotPosition(hole, prevShots, club) {
+  const green = hole.green;
+  const tee   = hole.tee;
+  if (!green) return { lat: 0, lng: 0 };
+
+  // Direction vector from tee to green (in equirectangular metres)
+  const refLat = green.lat;
+  const mPerDegLat = 111320;
+  const mPerDegLng = mPerDegLat * Math.cos(refLat * Math.PI / 180);
+  const dy = (green.lat - tee.lat) * mPerDegLat; // metres north
+  const dx = (green.lng - tee.lng) * mPerDegLng; // metres east
+  const holeDist = Math.sqrt(dx * dx + dy * dy);   // metres tee→green
+  const holeYards = holeDist * 1.09361;
+
+  // Unit vector tee→green
+  const ux = dx / holeDist;
+  const uy = dy / holeDist;
+
+  // Determine starting position for this shot
+  let startLat, startLng;
+  if (prevShots.length === 0) {
+    // First shot: stand on the tee
+    startLat = tee.lat;
+    startLng = tee.lng;
+  } else {
+    // Subsequent shots: start from previous shot's GPS position
+    const prev = prevShots[prevShots.length - 1];
+    startLat = prev.lat;
+    startLng = prev.lng;
+  }
+
+  const shotDist = estimateMockShotDist(club); // yards
+  const shotDistM = shotDist / 1.09361;        // metres
+
+  // Move along tee→green direction by shotDist
+  const lateralSpreadM = (Math.random() - 0.5) * shotDistM * 0.18; // ±9% lateral scatter
+  const forwardM = shotDistM;
+
+  const northM = uy * forwardM + (-ux) * lateralSpreadM;
+  const eastM  = ux * forwardM +   uy  * lateralSpreadM;
+
+  const northYards = northM * 1.09361;
+  const eastYards  = eastM  * 1.09361;
+
+  const pos = offsetGPS(startLat, startLng, northYards, eastYards);
+
+  // Clamp: don't fly past the green
+  // Compute progress along tee→green axis after this shot
+  const fromTeeLat = pos.lat - tee.lat;
+  const fromTeeLng = pos.lng - tee.lng;
+  const progressM  = (fromTeeLat * mPerDegLat) * uy + (fromTeeLng * mPerDegLng) * ux;
+  if (progressM > holeDist * 0.97) {
+    // Too close/past the green — snap near the green with small random offset
+    const nearNorth = (Math.random() - 0.5) * 8;
+    const nearEast  = (Math.random() - 0.5) * 8;
+    return offsetGPS(green.lat, green.lng, nearNorth, nearEast);
+  }
+
+  return pos;
+}
+
+// =============================================================
 // COURSE SELECTION
 // =============================================================
 
@@ -522,13 +621,21 @@ function addShot(rating) {
   const hole = currentHoleData();
   if (!hole || !state.pendingClub) return;
 
+  let shotLat = state.gpsPosition?.lat ?? null;
+  let shotLng = state.gpsPosition?.lng ?? null;
+  if (state.mockMode && hole.tee && hole.green) {
+    const pos = mockShotPosition(hole, hole.shots, state.pendingClub);
+    shotLat = pos.lat;
+    shotLng = pos.lng;
+  }
+
   const shot = {
     id: hole.shots.length + 1,
     club: state.pendingClub,
     rating,
     ratingVal: JEP_RATINGS[rating] ?? 0,
-    lat: state.gpsPosition?.lat ?? null,
-    lng: state.gpsPosition?.lng ?? null,
+    lat: shotLat,
+    lng: shotLng,
   };
 
   hole.shots.push(shot);
@@ -604,6 +711,38 @@ function gpsErrorMessage(err) {
     case 2: return 'Position unavailable — check that Location Services is on';
     case 3: return 'Timed out — move to an open area and try again';
     default: return `GPS error: ${err.message}`;
+  }
+}
+
+// =============================================================
+// WAKE LOCK
+// =============================================================
+
+let wakeLockSentinel = null;
+
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request('screen');
+    wakeLockSentinel.addEventListener('release', () => { wakeLockSentinel = null; });
+  } catch (e) {
+    // Permission denied or not supported — silently ignore
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLockSentinel) {
+    await wakeLockSentinel.release();
+    wakeLockSentinel = null;
+  }
+}
+
+function updateWakeLock() {
+  const inRound = state.activeScreen === 'hole-view' || state.activeScreen === 'hole-map';
+  if (inRound && !wakeLockSentinel) {
+    acquireWakeLock();
+  } else if (!inRound) {
+    releaseWakeLock();
   }
 }
 
@@ -689,6 +828,7 @@ function updateGPSStatus(status, message) {
 function render() {
   renderScreenVisibility();
   renderNav();
+  updateWakeLock();
 
   switch (state.activeScreen) {
     case 'course':        renderCourseScreen();  break;
@@ -736,9 +876,21 @@ function renderCourseScreen() {
 }
 
 // ── Hole View ────────────────────────────────────────────────
+/**
+ * Set the active tab on all hole-tabs bars (Score/Map).
+ * @param {'score'|'map'} tab
+ */
+function setHoleTabActive(tab) {
+  document.querySelectorAll('.hole-tab').forEach((el) => {
+    el.classList.toggle('hole-tab--active', el.dataset.tab === tab);
+  });
+}
+
 function renderHoleView() {
   const hole = currentHoleData();
   if (!hole) return;
+
+  setHoleTabActive('score');
 
   // Header
   document.getElementById('hole-number').textContent = `Hole ${hole.holeNumber}`;
@@ -977,6 +1129,8 @@ function renderHoleMap() {
   const hole = currentHoleData();
   if (!hole) return;
 
+  setHoleTabActive('map');
+
   document.getElementById('map-hole-label').textContent = `Hole ${hole.holeNumber}`;
 
   const svg = document.getElementById('hole-map-svg');
@@ -1104,7 +1258,7 @@ function renderHoleMap() {
   // ── TEE label ────────────────────────────────────────────
   const t = spts[0];
   html.push(`
-    <text x="${t.x.toFixed(1)}" y="${(t.y + t.y < MAP_H * 0.85 ? 24 : -16).toFixed(1)}"
+    <text x="${t.x.toFixed(1)}" y="${(t.y < MAP_H * 0.85 ? t.y + 24 : t.y - 16).toFixed(1)}"
           text-anchor="middle" font-size="8" font-weight="700"
           font-family="-apple-system,sans-serif" fill="#9ca3af" letter-spacing="0.5">TEE</text>`);
 
@@ -1604,6 +1758,14 @@ function wireEvents() {
   document.getElementById('review-back-btn').addEventListener('click', () => {
     navigateTo('history');
   });
+
+  // ── Score / Map tab bar (present in both hole-view and hole-map headers) ──
+  document.querySelectorAll('.hole-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      if (tab.dataset.tab === 'map') navigateTo('hole-map');
+      else navigateTo('hole-view');
+    });
+  });
 }
 
 // =============================================================
@@ -1705,6 +1867,11 @@ function init() {
   loadPersistedState();
   wireEvents();
   render(); // startGPS() is now triggered by the Find My Location button tap
+
+  // Re-acquire wake lock when the page becomes visible again (iOS releases it on hide)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') updateWakeLock();
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);

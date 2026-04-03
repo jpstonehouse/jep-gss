@@ -9,7 +9,11 @@
   <meta name="apple-mobile-web-app-title" content="JEP GSS" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="styles.css?v=11" />
+  <script src="app.js?v=11" defer></script>
   <title>JEP GSS</title>
 </head>
 <body>
@@ -115,7 +119,7 @@
     ─────────────────────────────────────────────── -->
     <section id="screen-hole-view" class="screen">
 
-      <!-- Header: hole nav + back/new-round actions -->
+      <!-- Header: hole nav + back/new-round actions + Score/Map tabs -->
       <div class="screen__header">
         <div class="hole-nav">
           <button id="prev-hole-btn" class="hole-nav__btn" aria-label="Previous hole">&#8249;</button>
@@ -129,6 +133,10 @@
         <div class="hole-header-actions">
           <button id="back-to-courses-btn" class="hole-header-btn">&#8592; Courses</button>
           <button id="new-round-hole-btn" class="hole-header-btn hole-header-btn--danger" hidden>&#8635; New Round</button>
+        </div>
+        <div class="hole-tabs">
+          <button class="hole-tab hole-tab--active" data-tab="score">Score</button>
+          <button class="hole-tab" data-tab="map">Map</button>
         </div>
       </div>
 
@@ -273,6 +281,10 @@
           <span id="map-hole-label" class="hole-nav__number">Hole 1</span>
           <button id="map-next-hole-btn" class="hole-nav__btn">&#8250;</button>
         </div>
+        <div class="hole-tabs">
+          <button class="hole-tab" data-tab="score">Score</button>
+          <button class="hole-tab hole-tab--active" data-tab="map">Map</button>
+        </div>
       </div>
 
       <div class="screen__body screen__body--map">
@@ -380,6 +392,5 @@
   <!-- Toast notification (shown briefly for special events) -->
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="app.js"></script>
 </body>
 </html>

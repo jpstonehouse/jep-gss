@@ -431,6 +431,38 @@ html, body {
   opacity: 0.25;
 }
 
+/* Score / Map tab bar — sits below the hole-nav in hole-view and hole-map headers */
+.hole-tabs {
+  display: flex;
+  margin-top: var(--space-sm);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  padding: 3px;
+  gap: 3px;
+}
+
+.hole-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  padding: 6px 0;
+  font-size: var(--text-sm);
+  font-family: var(--font-base);
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  touch-action: manipulation;
+}
+
+.hole-tab--active {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+}
+
 /* Row of small action buttons below the hole nav (Back to Courses / New Round) */
 .hole-header-actions {
   display: flex;
