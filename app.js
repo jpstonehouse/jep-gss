@@ -286,10 +286,10 @@ function startRoundFromCourse(course) {
  * @param {number} lng
  */
 async function searchNearbyCourses(lat, lng) {
-  const RADIUS_YARDS = 17600; // 10 miles exactly
-  const results = [];
+  const RADIUS_YARDS = 17600; // 10 miles
 
   // ── Step 1: Show local built-in courses immediately ──────
+  const results = [];
   LOCAL_COURSES.forEach(course => {
     const dist = haversineDistanceYards(lat, lng, course.center.lat, course.center.lng);
     if (dist <= RADIUS_YARDS) {
@@ -300,41 +300,88 @@ async function searchNearbyCourses(lat, lng) {
   results.sort((a, b) => a.distanceYards - b.distanceYards);
   courseSearchResults = [...results];
   courseApiLoading    = true;
-  renderCourseList(); // shows local results + "Searching online…" footer
+  renderCourseList();
 
   // ── Step 2: Fetch from RapidAPI ──────────────────────────
+  // No radius param — let the API return its full nearby set and enforce
+  // 10 mi ourselves client-side. Some API plans ignore radius anyway.
   try {
-    // radius parameter in km (~16 km ≈ 10 miles); API may or may not honour it,
-    // but we always enforce the limit client-side with RADIUS_YARDS above.
-    const url = `https://${RAPIDAPI.host}/courses?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&radius=16`;
-    const res = await fetch(url, {
+    const url = `https://${RAPIDAPI.host}/courses?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`;
+    console.log('[Courses] GPS sent to API:', lat.toFixed(6), lng.toFixed(6));
+    console.log('[Courses] Request URL:', url);
+
+    const res  = await fetch(url, {
       headers: {
         'X-RapidAPI-Key':  RAPIDAPI.key,
         'X-RapidAPI-Host': RAPIDAPI.host,
       },
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : (data.courses ?? data.data ?? []);
+    // Always read the body as text first so we can log it on error
+    const rawText = await res.text();
+    console.log('[Courses] HTTP status:', res.status, '| Body length:', rawText.length, 'chars');
 
-      list.forEach(c => {
-        const courseLat  = c.location?.lat ?? c.lat ?? null;
-        const courseLng  = c.location?.lng ?? c.lng ?? null;
-        const courseName = c.club_name ?? c.course_name ?? c.name ?? null;
-        if (!courseLat || !courseLng || !courseName) return;
+    if (!res.ok) {
+      console.warn('[Courses] Error body:', rawText.slice(0, 500));
+    } else {
+      let data;
+      try { data = JSON.parse(rawText); }
+      catch (e) { console.warn('[Courses] JSON parse failed:', rawText.slice(0, 200)); data = []; }
 
-        // Client-side distance enforcement (10 miles)
+      // Accept any top-level shape: plain array, {courses:[]}, {data:[]}, {results:[]}
+      const list = Array.isArray(data)
+        ? data
+        : (data.courses ?? data.data ?? data.results ?? []);
+
+      console.log('[Courses] Items in response:', list.length);
+
+      // Log the first item so we can see the exact field names the API uses
+      if (list.length > 0) {
+        console.log('[Courses] First item (field map):', JSON.stringify(list[0]).slice(0, 600));
+      }
+
+      let added = 0, tooFar = 0, dupe = 0, noFields = 0;
+
+      list.forEach((c, i) => {
+        // Coordinates — try every field-name variant in common use
+        const courseLat = c.location?.lat  ?? c.location?.latitude  ??
+                          c.lat            ?? c.latitude             ?? null;
+        const courseLng = c.location?.lng  ?? c.location?.lon       ??
+                          c.location?.longitude ??
+                          c.lng            ?? c.lon                  ??
+                          c.longitude      ?? null;
+
+        // Name — try every variant
+        const courseName = c.club_name ?? c.course_name ?? c.name ??
+                           c.courseName ?? c.club        ?? c.title ?? null;
+
+        if (courseLat === null || courseLng === null || !courseName) {
+          console.log(`[Courses] [${i}] SKIP (missing fields) — raw:`, JSON.stringify(c).slice(0, 120));
+          noFields++;
+          return;
+        }
+
         const dist = haversineDistanceYards(lat, lng, courseLat, courseLng);
-        if (dist > RADIUS_YARDS) return;
+        const mi   = (dist / 1760).toFixed(1);
 
-        // Skip if a local course with a similar name already covers this
+        if (dist > RADIUS_YARDS) {
+          console.log(`[Courses] [${i}] TOO FAR (${mi} mi): ${courseName}`);
+          tooFar++;
+          return;
+        }
+
         const normNew = normalizeCourseName(courseName);
-        if (results.find(r => normalizeCourseName(r.name) === normNew)) return;
+        if (results.find(r => normalizeCourseName(r.name) === normNew)) {
+          console.log(`[Courses] [${i}] DUPE: ${courseName}`);
+          dupe++;
+          return;
+        }
 
+        console.log(`[Courses] [${i}] ADDED (${mi} mi): ${courseName}`);
+        added++;
         results.push({
           name:          courseName,
-          totalHoles:    c.holes ?? c.num_holes ?? 18,
+          totalHoles:    c.holes ?? c.num_holes ?? c.numberOfHoles ?? 18,
           center:        { lat: courseLat, lng: courseLng },
           holes:         null,
           distanceYards: dist,
@@ -342,12 +389,10 @@ async function searchNearbyCourses(lat, lng) {
         });
       });
 
-      console.log(`[Courses] API returned ${list.length} courses, ${results.length - courseSearchResults.length} new within 10 mi`);
-    } else {
-      console.warn('[Courses] RapidAPI responded', res.status);
+      console.log(`[Courses] Done — added:${added} tooFar:${tooFar} dupe:${dupe} noFields:${noFields}`);
     }
   } catch (err) {
-    console.warn('[Courses] RapidAPI fetch failed:', err.message);
+    console.warn('[Courses] Fetch error:', err.message);
   }
 
   results.sort((a, b) => a.distanceYards - b.distanceYards);
@@ -1098,6 +1143,17 @@ function shotSummary(hole) {
 }
 
 // =============================================================
+// DEVELOPER MODE
+// =============================================================
+
+function toggleDevPanel() {
+  const panel = document.getElementById('dev-panel');
+  if (!panel) return;
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) showToast('Dev mode on', document.querySelector('.app-logo'));
+}
+
+// =============================================================
 // EVENT WIRING
 // =============================================================
 
@@ -1109,7 +1165,7 @@ function wireEvents() {
   });
 
   // ── Logo: triple-tap activates developer mode ────────────
-  // Tap the logo 3 times within 1.5 s to reveal the mock GPS panel.
+  // Tap the logo 3 times within 1.5 s to show/hide the dev panel.
   let logoTaps = 0;
   let logoTapTimer = null;
   document.querySelector('.app-logo').addEventListener('click', () => {
@@ -1117,14 +1173,15 @@ function wireEvents() {
     clearTimeout(logoTapTimer);
     if (logoTaps >= 3) {
       logoTaps = 0;
-      const panel = document.getElementById('dev-panel');
-      if (panel) {
-        panel.hidden = !panel.hidden;
-        if (!panel.hidden) showToast('🛠 Dev mode', document.querySelector('.app-logo'));
-      }
+      toggleDevPanel();
     } else {
       logoTapTimer = setTimeout(() => { logoTaps = 0; }, 1500);
     }
+  });
+
+  // ── Dev panel close button ───────────────────────────────
+  document.getElementById('dev-panel-close').addEventListener('click', () => {
+    document.getElementById('dev-panel').hidden = true;
   });
 
   // ── Find My Location button ──────────────────────────────
