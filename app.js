@@ -356,59 +356,89 @@ function navigateTo(screen) {
  * Request GPS permission and start watching position.
  * Updates state.gpsPosition on each fix.
  */
+/**
+ * Translate a GeolocationPositionError into a user-readable message.
+ * Codes: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
+ */
+function gpsErrorMessage(err) {
+  switch (err.code) {
+    case 1: return 'Permission denied — allow location in Settings > Safari > Location';
+    case 2: return 'Position unavailable — check that Location Services is on';
+    case 3: return 'Timed out — move to an open area and try again';
+    default: return `GPS error: ${err.message}`;
+  }
+}
+
+/**
+ * Start GPS with high accuracy. If that fails with a non-permission error,
+ * automatically retry with enableHighAccuracy: false as a fallback
+ * (helps on some iOS configurations where high-accuracy mode is blocked).
+ */
 function startGPS() {
   if (!('geolocation' in navigator)) {
-    updateGPSStatus('unavailable');
+    updateGPSStatus('error', 'Geolocation not supported by this browser');
     return;
   }
 
-  updateGPSStatus('locating');
+  updateGPSStatus('locating', 'Locating…');
 
-  navigator.geolocation.watchPosition(
-    (pos) => {
-      const gpsPosition = {
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
+  const onSuccess = (pos) => {
+    setState({
+      gpsPosition: {
+        lat:      pos.coords.latitude,
+        lng:      pos.coords.longitude,
         accuracy: pos.coords.accuracy,
-      };
-      setState({ gpsPosition });
-      updateGPSStatus('active');
-    },
-    (err) => {
-      console.warn('[GPS] Error:', err.message);
-      updateGPSStatus('error');
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 5000,
-      timeout: 10000,
+      }
+    });
+    updateGPSStatus('active', `GPS Active — ±${Math.round(pos.coords.accuracy)}m`);
+  };
+
+  const onError = (err) => {
+    console.warn('[GPS] High-accuracy error:', err.code, err.message);
+
+    // Permission denied — no point retrying, show the actionable message
+    if (err.code === 1) {
+      updateGPSStatus('error', gpsErrorMessage(err));
+      return;
     }
-  );
+
+    // Timeout or position unavailable — retry with low accuracy
+    updateGPSStatus('locating', 'Retrying without high accuracy…');
+    navigator.geolocation.watchPosition(
+      onSuccess,
+      (err2) => {
+        console.warn('[GPS] Low-accuracy error:', err2.code, err2.message);
+        updateGPSStatus('error', gpsErrorMessage(err2));
+      },
+      { enableHighAccuracy: false, maximumAge: 10000, timeout: 15000 }
+    );
+  };
+
+  navigator.geolocation.watchPosition(onSuccess, onError, {
+    enableHighAccuracy: true,
+    maximumAge: 5000,
+    timeout: 15000,
+  });
 }
 
 /**
  * Update the GPS status indicator on the Course screen.
- * @param {'locating'|'active'|'error'|'unavailable'} status
+ * @param {'locating'|'active'|'error'} status
+ * @param {string} [message]  optional override for the display text
  */
-function updateGPSStatus(status) {
-  const icon = document.getElementById('gps-icon');
-  const text = document.getElementById('gps-text');
-  if (!icon || !text) return;
+function updateGPSStatus(status, message) {
+  const text      = document.getElementById('gps-text');
+  const container = document.getElementById('gps-status');
+  if (!text || !container) return;
 
-  const labels = {
-    locating:    { text: 'Locating…',         cls: 'gps-status--locating' },
-    active:      { text: 'GPS Active',         cls: 'gps-status--active' },
-    error:       { text: 'GPS Error',          cls: 'gps-status--error' },
-    unavailable: { text: 'GPS Unavailable',    cls: 'gps-status--error' },
+  const clsMap = {
+    locating: 'gps-status--locating',
+    active:   'gps-status--active',
+    error:    'gps-status--error',
   };
 
-  const { text: label, cls } = labels[status] ?? labels.locating;
-  text.textContent = label;
-
-  const container = document.getElementById('gps-status');
-  if (container) {
-    container.className = `gps-status ${cls}`;
-  }
+  text.textContent  = message ?? status;
+  container.className = `gps-status ${clsMap[status] ?? 'gps-status--error'}`;
 }
 
 // =============================================================

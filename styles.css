@@ -227,6 +227,7 @@ html, body {
 .gps-status__text {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
+  line-height: 1.4;
 }
 
 /* Course list */
