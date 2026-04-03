@@ -40,10 +40,15 @@
       </div>
 
       <div class="screen__body">
-        <!-- GPS status indicator -->
-        <div id="gps-status" class="gps-status">
+        <!-- GPS: tap to request permission (Safari requires a user gesture) -->
+        <button id="find-location-btn" class="btn btn--find-location">
+          &#128205; Find My Location
+        </button>
+
+        <!-- GPS status indicator (hidden until location is requested) -->
+        <div id="gps-status" class="gps-status gps-status--hidden">
           <span id="gps-icon" class="gps-status__icon">&#9679;</span>
-          <span id="gps-text" class="gps-status__text">Locating…</span>
+          <span id="gps-text" class="gps-status__text"></span>
         </div>
 
         <!-- Nearby courses list (populated by JS) -->

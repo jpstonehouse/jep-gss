@@ -696,6 +696,14 @@ function wireEvents() {
     btn.addEventListener('click', () => navigateTo(btn.dataset.screen));
   });
 
+  // ── Find My Location button ──────────────────────────────
+  // Must be triggered by a tap — Safari denies auto geolocation on load
+  document.getElementById('find-location-btn').addEventListener('click', () => {
+    document.getElementById('find-location-btn').hidden = true;
+    document.getElementById('gps-status').classList.remove('gps-status--hidden');
+    startGPS();
+  });
+
   // ── Mock GPS button ──────────────────────────────────────
   document.getElementById('mock-gps-btn').addEventListener('click', loadMockCourse);
 
@@ -891,8 +899,7 @@ function exportRound() {
 function init() {
   loadPersistedState();
   wireEvents();
-  startGPS();
-  render();
+  render(); // startGPS() is now triggered by the Find My Location button tap
 }
 
 document.addEventListener('DOMContentLoaded', init);

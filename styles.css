@@ -180,6 +180,27 @@ html, body {
   margin-top: 2px;
 }
 
+/* Find My Location button */
+.btn--find-location {
+  width: 100%;
+  padding: var(--space-md);
+  margin-bottom: var(--space-sm);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  color: var(--color-primary);
+  font-size: var(--text-md);
+  font-weight: 600;
+  font-family: var(--font-base);
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn--find-location:active {
+  background: #f0fdf4;
+}
+
 /* GPS status */
 .gps-status {
   display: flex;
@@ -196,6 +217,8 @@ html, body {
   font-size: 10px;
   color: var(--color-text-muted);
 }
+
+.gps-status--hidden   { display: none; }
 
 .gps-status--locating .gps-status__icon { color: #f59e0b; }
 .gps-status--active   .gps-status__icon { color: #10b981; }
