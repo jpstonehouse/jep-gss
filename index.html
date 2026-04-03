@@ -55,11 +55,14 @@
           <!-- Course cards injected here by app.js -->
         </div>
 
-        <!-- Mock GPS button for desktop / HTTPS-blocked testing -->
-        <button id="mock-gps-btn" class="btn btn--mock">
-          &#127358; Use Mock Location (Testing)
-          <span class="btn--mock__sub">Pebble Beach Golf Links</span>
-        </button>
+        <!-- Dev mode panel — hidden by default, revealed by 3 taps on the logo -->
+        <div id="dev-panel" class="dev-panel" hidden>
+          <div class="dev-panel__label">&#128736; Developer Mode</div>
+          <button id="mock-gps-btn" class="btn btn--mock">
+            &#127358; Use Mock Location (Testing)
+            <span class="btn--mock__sub">Pebble Beach Golf Links</span>
+          </button>
+        </div>
 
         <div class="course-divider"><span>or enter manually</span></div>
 

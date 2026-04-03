@@ -82,6 +82,7 @@ const LOCAL_COURSES = [
 // Runtime cache of the last course search results (not persisted)
 let courseSearchResults = [];
 let courseSearchFired   = false; // prevent repeat searches on every GPS update
+let courseApiLoading    = false; // true while RapidAPI fetch is in flight
 
 // =============================================================
 // MOCK COURSE — Pebble Beach Golf Links
@@ -285,20 +286,27 @@ function startRoundFromCourse(course) {
  * @param {number} lng
  */
 async function searchNearbyCourses(lat, lng) {
-  renderCourseList('loading');
+  const RADIUS_YARDS = 17600; // 10 miles exactly
   const results = [];
 
-  // ── Local courses ────────────────────────────────────────
+  // ── Step 1: Show local built-in courses immediately ──────
   LOCAL_COURSES.forEach(course => {
     const dist = haversineDistanceYards(lat, lng, course.center.lat, course.center.lng);
-    if (dist < 26400) { // within ~15 miles
+    if (dist <= RADIUS_YARDS) {
       results.push({ ...course, distanceYards: dist, source: 'local' });
     }
   });
 
-  // ── RapidAPI ─────────────────────────────────────────────
+  results.sort((a, b) => a.distanceYards - b.distanceYards);
+  courseSearchResults = [...results];
+  courseApiLoading    = true;
+  renderCourseList(); // shows local results + "Searching online…" footer
+
+  // ── Step 2: Fetch from RapidAPI ──────────────────────────
   try {
-    const url = `https://${RAPIDAPI.host}/courses?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`;
+    // radius parameter in km (~16 km ≈ 10 miles); API may or may not honour it,
+    // but we always enforce the limit client-side with RADIUS_YARDS above.
+    const url = `https://${RAPIDAPI.host}/courses?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&radius=16`;
     const res = await fetch(url, {
       headers: {
         'X-RapidAPI-Key':  RAPIDAPI.key,
@@ -308,7 +316,6 @@ async function searchNearbyCourses(lat, lng) {
 
     if (res.ok) {
       const data = await res.json();
-      // Handle both array and object-wrapped responses
       const list = Array.isArray(data) ? data : (data.courses ?? data.data ?? []);
 
       list.forEach(c => {
@@ -317,23 +324,27 @@ async function searchNearbyCourses(lat, lng) {
         const courseName = c.club_name ?? c.course_name ?? c.name ?? null;
         if (!courseLat || !courseLng || !courseName) return;
 
-        // Skip if already covered by a local course of the same name
-        if (results.find(r => r.name === courseName)) return;
-
+        // Client-side distance enforcement (10 miles)
         const dist = haversineDistanceYards(lat, lng, courseLat, courseLng);
-        if (dist < 26400) {
-          results.push({
-            name:         courseName,
-            totalHoles:   c.holes ?? c.num_holes ?? 18,
-            center:       { lat: courseLat, lng: courseLng },
-            holes:        null, // no hole-level GPS data from API
-            distanceYards: dist,
-            source:       'api',
-          });
-        }
+        if (dist > RADIUS_YARDS) return;
+
+        // Skip if a local course with a similar name already covers this
+        const normNew = normalizeCourseName(courseName);
+        if (results.find(r => normalizeCourseName(r.name) === normNew)) return;
+
+        results.push({
+          name:          courseName,
+          totalHoles:    c.holes ?? c.num_holes ?? 18,
+          center:        { lat: courseLat, lng: courseLng },
+          holes:         null,
+          distanceYards: dist,
+          source:        'api',
+        });
       });
+
+      console.log(`[Courses] API returned ${list.length} courses, ${results.length - courseSearchResults.length} new within 10 mi`);
     } else {
-      console.warn('[Courses] RapidAPI responded', res.status, await res.text());
+      console.warn('[Courses] RapidAPI responded', res.status);
     }
   } catch (err) {
     console.warn('[Courses] RapidAPI fetch failed:', err.message);
@@ -341,28 +352,25 @@ async function searchNearbyCourses(lat, lng) {
 
   results.sort((a, b) => a.distanceYards - b.distanceYards);
   courseSearchResults = results;
-  renderCourseList('results');
+  courseApiLoading    = false;
+  renderCourseList();
 }
 
 /**
- * Render the course list in one of three states: loading | results | empty.
- * @param {'loading'|'results'} state
+ * Normalize a course name for deduplication comparisons.
+ * Strips punctuation, spaces, and casing so "Zaca Creek Golf Course" and
+ * "Zaca Creek" don't both appear in the list.
  */
-function renderCourseList(listState) {
+function normalizeCourseName(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** Render the course list from courseSearchResults. */
+function renderCourseList() {
   const container = document.getElementById('course-list');
   if (!container) return;
 
-  if (listState === 'loading') {
-    container.innerHTML = `<p class="course-list__status">Searching for nearby courses…</p>`;
-    return;
-  }
-
-  if (courseSearchResults.length === 0) {
-    container.innerHTML = `<p class="course-list__status">No courses found nearby.</p>`;
-    return;
-  }
-
-  container.innerHTML = courseSearchResults.map((course, idx) => {
+  let html = courseSearchResults.map((course, idx) => {
     const distMiles = (course.distanceYards / 1760).toFixed(1);
     const badge = course.source === 'local'
       ? `<span class="course-card__badge">Built-in</span>`
@@ -373,6 +381,15 @@ function renderCourseList(listState) {
         <div class="course-card__detail">${course.totalHoles} holes · ${distMiles} mi away</div>
       </div>`;
   }).join('');
+
+  if (courseApiLoading) {
+    // Show a subtle footer while the API call is in flight
+    html += `<p class="course-list__status course-list__status--searching">Searching online database…</p>`;
+  } else if (courseSearchResults.length === 0) {
+    html = `<p class="course-list__status">No courses found within 10 miles.</p>`;
+  }
+
+  container.innerHTML = html;
 }
 
 /** Format a rating number as "+4", "-2", or "0". */
@@ -686,8 +703,9 @@ function renderCourseScreen() {
   // Reset search state when returning to this screen so a fresh search
   // can be triggered next time the user taps Find My Location
   if (!state.gpsPosition) {
-    courseSearchFired = false;
+    courseSearchFired   = false;
     courseSearchResults = [];
+    courseApiLoading    = false;
     const container = document.getElementById('course-list');
     if (container) container.innerHTML = '';
   }
@@ -1088,6 +1106,25 @@ function wireEvents() {
   // ── Nav buttons ─────────────────────────────────────────
   document.querySelectorAll('.nav__btn').forEach((btn) => {
     btn.addEventListener('click', () => navigateTo(btn.dataset.screen));
+  });
+
+  // ── Logo: triple-tap activates developer mode ────────────
+  // Tap the logo 3 times within 1.5 s to reveal the mock GPS panel.
+  let logoTaps = 0;
+  let logoTapTimer = null;
+  document.querySelector('.app-logo').addEventListener('click', () => {
+    logoTaps++;
+    clearTimeout(logoTapTimer);
+    if (logoTaps >= 3) {
+      logoTaps = 0;
+      const panel = document.getElementById('dev-panel');
+      if (panel) {
+        panel.hidden = !panel.hidden;
+        if (!panel.hidden) showToast('🛠 Dev mode', document.querySelector('.app-logo'));
+      }
+    } else {
+      logoTapTimer = setTimeout(() => { logoTaps = 0; }, 1500);
+    }
   });
 
   // ── Find My Location button ──────────────────────────────
