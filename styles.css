@@ -311,6 +311,25 @@ html, body {
   opacity: 0.25;
 }
 
+/* New Round button — sits below the hole nav, right-aligned, unobtrusive */
+.new-round-hole-btn {
+  display: block;
+  margin-left: auto;
+  margin-top: var(--space-xs);
+  background: none;
+  border: none;
+  font-size: var(--text-xs);
+  font-family: var(--font-base);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px var(--space-xs);
+  touch-action: manipulation;
+}
+
+.new-round-hole-btn:active {
+  color: var(--color-bad2);
+}
+
 .hole-nav__info {
   text-align: center;
 }

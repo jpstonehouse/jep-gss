@@ -712,6 +712,22 @@ function wireEvents() {
     });
   });
 
+  // ── Hole View: new round ─────────────────────────────────
+  document.getElementById('new-round-hole-btn').addEventListener('click', () => {
+    if (confirm('Are you sure? This will end your current round.')) {
+      archiveRound();
+      setState({
+        courseName:   null,
+        totalHoles:   18,
+        holes:        [],
+        currentHole:  1,
+        pendingClub:  null,
+        mockMode:     false,
+        activeScreen: 'course',
+      });
+    }
+  });
+
   // ── Hole View: hole navigation ───────────────────────────
   document.getElementById('prev-hole-btn').addEventListener('click', () => {
     if (state.currentHole > 1) setState({ currentHole: state.currentHole - 1, pendingClub: null });
