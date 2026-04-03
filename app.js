@@ -162,6 +162,7 @@ const state = {
   gpsPosition: null,
   pendingClub: null,   // club selected but not yet rated; cleared after each shot
   mockMode: false,
+  reviewingRound: null, // index into jep-gss-history array for the review screen
 };
 
 // =============================================================
@@ -649,10 +650,12 @@ function render() {
   renderNav();
 
   switch (state.activeScreen) {
-    case 'course':     renderCourseScreen();    break;
-    case 'hole-view':  renderHoleView();        break;
-    case 'hole-map':   renderHoleMap();         break;
-    case 'scorecard':  renderScorecard();       break;
+    case 'course':        renderCourseScreen();  break;
+    case 'hole-view':     renderHoleView();      break;
+    case 'hole-map':      renderHoleMap();       break;
+    case 'scorecard':     renderScorecard();     break;
+    case 'history':       renderHistory();       break;
+    case 'round-review':  renderRoundReview();   break;
   }
 }
 
@@ -669,7 +672,8 @@ function renderScreenVisibility() {
 function renderNav() {
   const nav = document.getElementById('nav');
   if (!nav) return;
-  nav.classList.toggle('nav--hidden', state.activeScreen === 'course');
+  const hideNav = state.activeScreen === 'course' || state.activeScreen === 'round-review';
+  nav.classList.toggle('nav--hidden', hideNav);
 
   // Highlight active nav button
   nav.querySelectorAll('.nav__btn').forEach((btn) => {
@@ -934,6 +938,147 @@ function subtotalRow(label, par, strokes, putts, rating, isBold = false) {
   `;
 }
 
+// ── Round History ─────────────────────────────────────────────
+function renderHistory() {
+  const body = document.getElementById('history-body');
+  if (!body) return;
+
+  let history = [];
+  try {
+    history = JSON.parse(localStorage.getItem('jep-gss-history') ?? '[]');
+  } catch (e) { /* ignore */ }
+
+  if (history.length === 0) {
+    body.innerHTML = `<p class="history-empty">No completed rounds yet.<br>Finish a round to see it here.</p>`;
+    return;
+  }
+
+  // Display most recent first
+  const reversed = [...history].reverse();
+  body.innerHTML = reversed.map((round, displayIdx) => {
+    const storageIdx = history.length - 1 - displayIdx;
+    const totalStrokes = round.holes.reduce((s, h) => s + calcStrokes(h), 0);
+    const totalPutts   = round.holes.reduce((s, h) => s + h.shots.filter(sh => sh.club === 'P').length, 0);
+    const totalRating  = round.holes.reduce((s, h) => s + calcRating(h), 0);
+    const date         = new Date(round.date);
+    const dateStr      = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const ratingCls    = totalRating > 0 ? 'rating--pos' : totalRating < 0 ? 'rating--neg' : '';
+
+    return `
+      <div class="history-card" data-round-idx="${storageIdx}">
+        <div class="history-card__header">
+          <span class="history-card__course">${round.courseName ?? 'Unnamed Course'}</span>
+          <span class="history-card__date">${dateStr}</span>
+        </div>
+        <div class="history-card__stats">
+          <div class="history-card__stat">
+            <span class="history-card__stat-val">${totalStrokes || '—'}</span>
+            <span class="history-card__stat-lbl">Strokes</span>
+          </div>
+          <div class="history-card__stat">
+            <span class="history-card__stat-val">${totalStrokes ? totalPutts : '—'}</span>
+            <span class="history-card__stat-lbl">Putts</span>
+          </div>
+          <div class="history-card__stat">
+            <span class="history-card__stat-val ${ratingCls}">${totalStrokes ? fmtRating(totalRating) : '—'}</span>
+            <span class="history-card__stat-lbl">Rating</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Round Review ──────────────────────────────────────────────
+function renderRoundReview() {
+  const titleEl = document.getElementById('review-title');
+  const body    = document.getElementById('review-body');
+  if (!body || !titleEl) return;
+
+  let history = [];
+  try {
+    history = JSON.parse(localStorage.getItem('jep-gss-history') ?? '[]');
+  } catch (e) { /* ignore */ }
+
+  const round = history[state.reviewingRound];
+  if (!round) {
+    body.innerHTML = `<p class="history-empty">Round not found.</p>`;
+    return;
+  }
+
+  const date = new Date(round.date);
+  const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  titleEl.innerHTML = `${round.courseName ?? 'Unnamed Course'}<br><span class="round-review-date">${dateStr}</span>`;
+
+  let frontStrokes = 0, frontPutts = 0, frontRating = 0, frontPar = 0;
+  let backStrokes  = 0, backPutts  = 0, backRating  = 0, backPar  = 0;
+
+  const rows = round.holes.map((hole, idx) => {
+    const strokes = calcStrokes(hole);
+    const putts   = hole.shots.filter(s => s.club === 'P').length;
+    const rating  = calcRating(hole);
+
+    if (idx < 9) {
+      frontStrokes += strokes; frontPutts += putts;
+      frontPar     += hole.par; frontRating += rating;
+    } else {
+      backStrokes += strokes; backPutts += putts;
+      backPar     += hole.par; backRating += rating;
+    }
+
+    const ratingCls = rating > 0 ? 'rating--pos' : rating < 0 ? 'rating--neg' : '';
+    const summary   = shotSummary(hole);
+
+    return `
+      <tr>
+        <td>${hole.holeNumber}</td>
+        <td>${hole.par}</td>
+        <td>${strokes || '—'}</td>
+        <td>${strokes ? putts : '—'}</td>
+        <td class="${ratingCls}">${strokes ? fmtRating(rating) : '—'}</td>
+      </tr>
+      <tr class="scorecard-shots-row">
+        <td colspan="5">${summary}</td>
+      </tr>
+      ${idx === 8 ? subtotalRow('Out', frontPar, frontStrokes, frontPutts, frontRating) : ''}`;
+  }).join('');
+
+  const totalStrokes = frontStrokes + backStrokes;
+  const totalPutts   = frontPutts   + backPutts;
+  const totalRating  = frontRating  + backRating;
+  const totalPar     = frontPar     + backPar;
+
+  body.innerHTML = `
+    <div class="scorecard-scroll">
+      <table class="scorecard-table">
+        <thead>
+          <tr>
+            <th>Hole</th><th>Par</th><th>Strokes</th><th>Putts</th><th>Rating</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          ${round.holes.length > 9 ? subtotalRow('In', backPar, backStrokes, backPutts, backRating) : ''}
+          ${subtotalRow('Total', totalPar, totalStrokes, totalPutts, totalRating, true)}
+        </tfoot>
+      </table>
+    </div>`;
+}
+
+/**
+ * Build the shot summary string for a hole.
+ * Format: "pre-green shots | putts"  e.g. "++ + - | - -"
+ * @param {HoleData} hole
+ * @returns {string}
+ */
+function shotSummary(hole) {
+  if (!hole.shots.length) return '—';
+  const preGreen = hole.shots.filter(s => s.club !== 'P').map(s => s.rating);
+  const putts    = hole.shots.filter(s => s.club === 'P').map(s => s.rating);
+  if (!putts.length)    return preGreen.join(' ');
+  if (!preGreen.length) return `| ${putts.join(' ')}`;
+  return `${preGreen.join(' ')} | ${putts.join(' ')}`;
+}
+
 // =============================================================
 // EVENT WIRING
 // =============================================================
@@ -1057,10 +1202,12 @@ function wireEvents() {
     }
   });
 
+  // ── Hole View: end round ─────────────────────────────────
+  document.getElementById('end-round-btn').addEventListener('click', endRound);
+
   // ── Scorecard: new round ─────────────────────────────────
   document.getElementById('new-round-btn').addEventListener('click', () => {
     if (confirm('Start a new round? Current round will be saved locally.')) {
-      // Archive current round to localStorage before resetting
       archiveRound();
       setState({
         courseName:  null,
@@ -1074,11 +1221,42 @@ function wireEvents() {
 
   // ── Scorecard: export ────────────────────────────────────
   document.getElementById('export-btn').addEventListener('click', exportRound);
+
+  // ── History: tap a round card ────────────────────────────
+  document.getElementById('history-body').addEventListener('click', (e) => {
+    const card = e.target.closest('[data-round-idx]');
+    if (!card) return;
+    const idx = parseInt(card.dataset.roundIdx, 10);
+    setState({ reviewingRound: idx, activeScreen: 'round-review' });
+  });
+
+  // ── Round Review: back button ────────────────────────────
+  document.getElementById('review-back-btn').addEventListener('click', () => {
+    navigateTo('history');
+  });
 }
 
 // =============================================================
 // ROUND ARCHIVE & EXPORT
 // =============================================================
+
+/**
+ * End the current round: save to history and return to Course Detection.
+ */
+function endRound() {
+  if (confirm('End round and save to history?')) {
+    archiveRound();
+    setState({
+      courseName:   null,
+      totalHoles:   18,
+      holes:        [],
+      currentHole:  1,
+      pendingClub:  null,
+      mockMode:     false,
+      activeScreen: 'course',
+    });
+  }
+}
 
 /**
  * Save the completed round to a separate localStorage key for history.

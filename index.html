@@ -26,6 +26,7 @@
       <button class="nav__btn" data-screen="hole-view">Hole</button>
       <button class="nav__btn" data-screen="hole-map">Map</button>
       <button class="nav__btn" data-screen="scorecard">Card</button>
+      <button class="nav__btn" data-screen="history">History</button>
     </nav>
 
     <!-- ── SCREEN: COURSE DETECTION ─────────────────
@@ -227,6 +228,11 @@
           Save Hole &#8594;
         </button>
 
+        <!-- End Round — saves to history and returns to Course Detection -->
+        <button id="end-round-btn" class="btn btn--end-round btn--full">
+          &#9873; End Round &amp; Save
+        </button>
+
       </div>
     </section>
 
@@ -318,6 +324,35 @@
           <button id="export-btn" class="btn btn--secondary">Export Round</button>
           <button id="new-round-btn" class="btn btn--primary">New Round</button>
         </div>
+      </div>
+    </section>
+
+    <!-- ── SCREEN: ROUND HISTORY ─────────────────────────
+         List of all completed rounds, most recent first.
+         Tap a card to open the Round Review screen.
+    ─────────────────────────────────────────────── -->
+    <section id="screen-history" class="screen">
+      <div class="screen__header">
+        <h2 class="screen__title">Round History</h2>
+      </div>
+      <div class="screen__body" id="history-body">
+        <!-- Cards injected by renderHistory() -->
+      </div>
+    </section>
+
+    <!-- ── SCREEN: ROUND REVIEW ──────────────────────────
+         Full scorecard + shot summaries for a past round.
+         Back button returns to history list.
+    ─────────────────────────────────────────────── -->
+    <section id="screen-round-review" class="screen">
+      <div class="screen__header">
+        <div class="round-review-nav">
+          <button id="review-back-btn" class="review-back-btn">&#8592; History</button>
+          <div id="review-title" class="round-review-title"></div>
+        </div>
+      </div>
+      <div class="screen__body screen__body--scorecard" id="review-body">
+        <!-- Injected by renderRoundReview() -->
       </div>
     </section>
 
