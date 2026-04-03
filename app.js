@@ -897,15 +897,289 @@ function ratingCssClass(rating) {
 }
 
 // ── Hole Map ─────────────────────────────────────────────────
+
+const MAP_W = 300, MAP_H = 500; // must match SVG viewBox
+
+/**
+ * Build a GPS → SVG projection function for a hole.
+ *
+ * Algorithm:
+ *  1. Project all GPS points to local metres (equirectangular, centred on
+ *     the centroid of all points — accurate enough for < 1 km range).
+ *  2. Rotate the coordinate space so the tee→green vector points up (+y),
+ *     which becomes the top of the SVG after the y-axis flip.
+ *  3. Find the rotated bounding box, scale uniformly with 18% padding to
+ *     fill MAP_W × MAP_H.
+ *
+ * Returns a projection function (lat, lng) → {x, y} in SVG space,
+ * or null when no GPS-tagged shots exist.
+ */
+function buildGPSProjection(hole) {
+  const gpsShots = hole.shots.filter(s => s.lat != null && s.lng != null);
+  if (gpsShots.length === 0) return null;
+
+  // All points that define the extent (shots + green if known)
+  const allPts = gpsShots.map(s => ({ lat: s.lat, lng: s.lng }));
+  if (hole.green) allPts.push({ lat: hole.green.lat, lng: hole.green.lng });
+
+  // Centroid as local projection origin
+  const cLat = allPts.reduce((s, p) => s + p.lat, 0) / allPts.length;
+  const cLng = allPts.reduce((s, p) => s + p.lng, 0) / allPts.length;
+
+  // Equirectangular → metres
+  const DEG  = Math.PI / 180;
+  const mLat = 6371000 * DEG;
+  const mLng = 6371000 * DEG * Math.cos(cLat * DEG);
+  const toXY = (lat, lng) => ({ x: (lng - cLng) * mLng, y: (lat - cLat) * mLat });
+
+  // Rotation: align tee→green (or tee→last-shot) with +y axis
+  let cosA = 1, sinA = 0;
+  const teeXY = toXY(gpsShots[0].lat, gpsShots[0].lng);
+  const endRef = hole.green
+    ? toXY(hole.green.lat, hole.green.lng)
+    : gpsShots.length > 1 ? toXY(gpsShots[gpsShots.length - 1].lat, gpsShots[gpsShots.length - 1].lng)
+    : null;
+  if (endRef) {
+    const dx = endRef.x - teeXY.x, dy = endRef.y - teeXY.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 0) {
+      const θ = Math.atan2(dx, dy); // rotates (dx,dy) onto +y axis
+      cosA = Math.cos(θ); sinA = Math.sin(θ);
+    }
+  }
+  const rotate = ({ x, y }) => ({ x: x * cosA - y * sinA, y: x * sinA + y * cosA });
+
+  // Rotated bounding box
+  const rPts = allPts.map(p => rotate(toXY(p.lat, p.lng)));
+  const xs = rPts.map(p => p.x), ys = rPts.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const rangeX = Math.max(maxX - minX, 5);
+  const rangeY = Math.max(maxY - minY, 5);
+
+  // Uniform scale — 18% padding on each side
+  const PAD   = 0.18;
+  const scale = Math.min(MAP_W * (1 - 2 * PAD) / rangeX, MAP_H * (1 - 2 * PAD) / rangeY);
+  const offX  = (MAP_W - rangeX * scale) / 2;
+  const offY  = (MAP_H - rangeY * scale) / 2;
+
+  // Project: GPS → SVG (y-flip: large Cartesian y → small SVG y = top of screen)
+  return (lat, lng) => {
+    const r = rotate(toXY(lat, lng));
+    return {
+      x: offX + (r.x - minX) * scale,
+      y: offY + (maxY - r.y) * scale,
+    };
+  };
+}
+
 function renderHoleMap() {
   const hole = currentHoleData();
   if (!hole) return;
 
   document.getElementById('map-hole-label').textContent = `Hole ${hole.holeNumber}`;
 
-  // TODO: Plot GPS shot points on the SVG canvas.
-  // Shots with lat/lng will be projected onto the SVG coordinate space
-  // using a simple bounding-box transform once we have ≥2 GPS points.
+  const svg = document.getElementById('hole-map-svg');
+  if (!svg) return;
+
+  hideShotPopup();
+
+  const gpsShots = hole.shots.filter(s => s.lat != null && s.lng != null);
+
+  // ── No GPS data ──────────────────────────────────────────
+  if (gpsShots.length === 0) {
+    svg.innerHTML = `
+      <rect width="${MAP_W}" height="${MAP_H}" fill="#fff"/>
+      <text x="150" y="228" text-anchor="middle" font-size="13"
+            font-family="-apple-system,sans-serif" fill="#9ca3af">No GPS data yet.</text>
+      <text x="150" y="250" text-anchor="middle" font-size="11"
+            font-family="-apple-system,sans-serif" fill="#c4c9d4">GPS is captured automatically</text>
+      <text x="150" y="266" text-anchor="middle" font-size="11"
+            font-family="-apple-system,sans-serif" fill="#c4c9d4">when each shot is logged.</text>`;
+    return;
+  }
+
+  const project = buildGPSProjection(hole);
+  if (!project) return;
+
+  // Pre-project all GPS shot positions
+  const spts = gpsShots.map((shot, i) => ({ ...project(shot.lat, shot.lng), shot, i }));
+  const firstPuttIdx = gpsShots.findIndex(s => s.club === 'P');
+
+  const html = [];
+
+  // ── Background ──────────────────────────────────────────
+  html.push(`<rect width="${MAP_W}" height="${MAP_H}" fill="#fff"/>`);
+
+  // ── Fairway corridor ─────────────────────────────────────
+  // Soft rounded polyline behind everything to suggest the course shape
+  const corrPts = spts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`);
+  if (hole.green) {
+    const g = project(hole.green.lat, hole.green.lng);
+    corrPts.push(`${g.x.toFixed(1)},${g.y.toFixed(1)}`);
+  }
+  if (corrPts.length >= 2) {
+    const pts = corrPts.join(' ');
+    html.push(`<polyline points="${pts}" fill="none" stroke="#e8f3e0"
+                stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>`);
+    html.push(`<polyline points="${pts}" fill="none" stroke="#d4e8c0"
+                stroke-width="46" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>`);
+  }
+
+  // ── Green ellipse ────────────────────────────────────────
+  if (hole.green) {
+    const g = project(hole.green.lat, hole.green.lng);
+    html.push(`
+      <ellipse cx="${g.x.toFixed(1)}" cy="${g.y.toFixed(1)}" rx="26" ry="18"
+               fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+      <text x="${g.x.toFixed(1)}" y="${(g.y + 4.5).toFixed(1)}"
+            text-anchor="middle" font-size="8" font-weight="700"
+            font-family="-apple-system,sans-serif" fill="#065f46">GREEN</text>`);
+  }
+
+  // ── Shot path lines ───────────────────────────────────────
+  for (let i = 1; i < spts.length; i++) {
+    const a = spts[i - 1], b = spts[i];
+
+    if (isPenaltyShot(a.shot)) {
+      // OB/L: don't connect to next shot (re-hit from same spot).
+      // Instead draw a dashed "ball went this way" line extending from a.
+      const prev = i >= 2 ? spts[i - 2] : null;
+      const dx   = a.x - (prev ? prev.x : a.x + 0.01);
+      const dy   = a.y - (prev ? prev.y : a.y + 10);
+      const len  = Math.hypot(dx, dy) || 1;
+      const ext  = 48;
+      html.push(`<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}"
+                       x2="${(a.x + dx / len * ext).toFixed(1)}"
+                       y2="${(a.y + dy / len * ext).toFixed(1)}"
+                       stroke="#c4b5fd" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.85"/>`);
+    } else {
+      const inPuttZone = firstPuttIdx !== -1 && i >= firstPuttIdx;
+      html.push(`<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}"
+                       x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"
+                       stroke="${inPuttZone ? '#7dd3fc' : '#6b7280'}"
+                       stroke-width="${inPuttZone ? 2.5 : 2}"
+                       stroke-linecap="round"/>`);
+    }
+  }
+
+  // ── Shot dots + labels ────────────────────────────────────
+  const COLORS = {
+    '!':  { fill: '#fef3c7', stroke: '#b45309', text: '#92400e' },
+    '++': { fill: '#d1fae5', stroke: '#059669', text: '#065f46' },
+    '+':  { fill: '#dcfce7', stroke: '#16a34a', text: '#15803d' },
+    '-':  { fill: '#f3f4f6', stroke: '#9ca3af', text: '#4b5563' },
+    '--': { fill: '#fff7ed', stroke: '#ea580c', text: '#c2410c' },
+    '#':  { fill: '#fee2e2', stroke: '#dc2626', text: '#b91c1c' },
+    'OB': { fill: '#ede9fe', stroke: '#7c3aed', text: '#6d28d9' },
+    'L':  { fill: '#ede9fe', stroke: '#7c3aed', text: '#6d28d9' },
+  };
+
+  spts.forEach((sp, i) => {
+    const { shot } = sp;
+    const clr  = COLORS[shot.rating] ?? { fill: '#f3f4f6', stroke: '#6b7280', text: '#374151' };
+    const r    = shot.club === 'P' ? 9 : 11;
+    const fs   = shot.rating.length > 1 ? 7 : 9;
+    const dash = isPenaltyShot(shot) ? ' stroke-dasharray="3 2"' : '';
+
+    // Shot-number label offset — push away from SVG centre
+    const offN = r + 9;
+    const nx   = sp.x > MAP_W / 2 ? sp.x - offN : sp.x + offN;
+    const ny   = sp.y < MAP_H / 2 ? sp.y - 2    : sp.y + offN - 2;
+
+    html.push(`
+      <circle cx="${sp.x.toFixed(1)}" cy="${sp.y.toFixed(1)}" r="${r}"
+              fill="${clr.fill}" stroke="${clr.stroke}" stroke-width="2"${dash}
+              class="map-shot-dot" data-shot-idx="${i}" style="cursor:pointer"/>
+      <text x="${sp.x.toFixed(1)}" y="${(sp.y + fs * 0.36).toFixed(1)}"
+            text-anchor="middle" font-size="${fs}" font-weight="800"
+            font-family="-apple-system,sans-serif" fill="${clr.text}"
+            pointer-events="none">${shot.rating}</text>
+      <text x="${nx.toFixed(1)}" y="${(ny + 3).toFixed(1)}"
+            text-anchor="middle" font-size="8" font-weight="500"
+            font-family="-apple-system,sans-serif" fill="#9ca3af"
+            pointer-events="none">${i + 1}</text>`);
+  });
+
+  // ── TEE label ────────────────────────────────────────────
+  const t = spts[0];
+  html.push(`
+    <text x="${t.x.toFixed(1)}" y="${(t.y + t.y < MAP_H * 0.85 ? 24 : -16).toFixed(1)}"
+          text-anchor="middle" font-size="8" font-weight="700"
+          font-family="-apple-system,sans-serif" fill="#9ca3af" letter-spacing="0.5">TEE</text>`);
+
+  svg.innerHTML = html.join('\n');
+
+  // ── Dot click handlers ────────────────────────────────────
+  svg.querySelectorAll('.map-shot-dot').forEach(dotEl => {
+    dotEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx  = parseInt(dotEl.dataset.shotIdx, 10);
+      showShotPopup(gpsShots[idx], gpsShots[idx + 1] ?? null, spts[idx].x, spts[idx].y, svg);
+    });
+  });
+}
+
+/**
+ * Show the shot info popup near a dot.
+ * @param {Shot}       shot      - the tapped shot
+ * @param {Shot|null}  nextShot  - next shot (used to calculate distance traveled)
+ * @param {number}     svgX      - dot x in SVG viewBox space
+ * @param {number}     svgY      - dot y in SVG viewBox space
+ * @param {SVGElement} svgEl
+ */
+function showShotPopup(shot, nextShot, svgX, svgY, svgEl) {
+  const popup = document.getElementById('shot-popup');
+  if (!popup) return;
+
+  // Distance this shot traveled = from here to where the next shot was taken
+  let distStr = '—';
+  if (nextShot && shot.lat != null && nextShot.lat != null) {
+    distStr = `${haversineDistanceYards(shot.lat, shot.lng, nextShot.lat, nextShot.lng)} yds`;
+  }
+
+  const CLUB_NAMES = {
+    D:'Driver', '3W':'3 Wood', '5W':'5 Wood',
+    '3I':'3 Iron','4I':'4 Iron','5I':'5 Iron','6I':'6 Iron',
+    '7I':'7 Iron','8I':'8 Iron','9I':'9 Iron',
+    PW:'Pitching Wedge', SW:'Sand Wedge', LW:'Lob Wedge', P:'Putter',
+  };
+
+  popup.innerHTML = `
+    <button class="shot-popup__close" aria-label="Close">&#215;</button>
+    <div class="shot-popup__club">${CLUB_NAMES[shot.club] ?? shot.club}</div>
+    <div class="shot-popup__rating">
+      <span class="rating-chip rating-chip--${ratingCssClass(shot.rating)}">${shot.rating}</span>
+      <span class="shot-popup__label">${ratingLabel(shot.rating)}</span>
+    </div>
+    <div class="shot-popup__dist">${distStr}</div>`;
+
+  // Convert SVG viewBox coords → container-relative screen pixels
+  const svgRect = svgEl.getBoundingClientRect();
+  const cRect   = svgEl.closest('.hole-map-container').getBoundingClientRect();
+  const sx = svgRect.width  / MAP_W;
+  const sy = svgRect.height / MAP_H;
+  const dotX = (svgRect.left - cRect.left) + svgX * sx;
+  const dotY = (svgRect.top  - cRect.top)  + svgY * sy;
+
+  const PW = 150;
+  let left = dotX - PW / 2;
+  let top  = dotY - 96;
+  if (top < 6) top = dotY + 22;
+
+  popup.style.left = `${Math.max(4, Math.min(left, cRect.width - PW - 4))}px`;
+  popup.style.top  = `${top}px`;
+  popup.hidden     = false;
+
+  popup.querySelector('.shot-popup__close').addEventListener('click', (e) => {
+    e.stopPropagation();
+    hideShotPopup();
+  }, { once: true });
+}
+
+function hideShotPopup() {
+  const el = document.getElementById('shot-popup');
+  if (el) el.hidden = true;
 }
 
 // ── Scorecard ────────────────────────────────────────────────
@@ -1287,11 +1561,14 @@ function wireEvents() {
   });
 
   // ── Hole Map: capture GPS ────────────────────────────────
+  // Tapping the SVG background dismisses any open shot popup.
+  // Dot click handlers call e.stopPropagation() so this doesn't
+  // fire when a dot is tapped — it only fires on background taps.
+  document.getElementById('hole-map-svg').addEventListener('click', hideShotPopup);
+
   document.getElementById('capture-gps-btn').addEventListener('click', () => {
-    // TODO: Attach current GPS position to the most recent shot on this hole
     if (state.gpsPosition) {
       console.log('[GPS] Current position:', state.gpsPosition);
-      // Future: assign position to shot, then re-render map
     }
   });
 
