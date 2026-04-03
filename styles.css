@@ -180,6 +180,26 @@ html, body {
   margin-top: 2px;
 }
 
+/* Course name search row */
+.course-search {
+  margin-bottom: var(--space-md);
+}
+
+.course-search__row {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.course-search__row .input {
+  flex: 1;
+}
+
+.btn--search {
+  flex-shrink: 0;
+  padding: var(--space-sm) var(--space-md);
+  white-space: nowrap;
+}
+
 /* Find My Location button */
 .btn--find-location {
   width: 100%;
@@ -411,11 +431,14 @@ html, body {
   opacity: 0.25;
 }
 
-/* New Round button — sits below the hole nav, right-aligned, unobtrusive */
-.new-round-hole-btn {
-  display: block;
-  margin-left: auto;
+/* Row of small action buttons below the hole nav (Back to Courses / New Round) */
+.hole-header-actions {
+  display: flex;
+  justify-content: space-between;
   margin-top: var(--space-xs);
+}
+
+.hole-header-btn {
   background: none;
   border: none;
   font-size: var(--text-xs);
@@ -426,7 +449,11 @@ html, body {
   touch-action: manipulation;
 }
 
-.new-round-hole-btn:active {
+.hole-header-btn:active {
+  color: var(--color-primary);
+}
+
+.hole-header-btn--danger:active {
   color: var(--color-bad2);
 }
 

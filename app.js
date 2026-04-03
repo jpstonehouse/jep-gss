@@ -81,8 +81,9 @@ const LOCAL_COURSES = [
 
 // Runtime cache of the last course search results (not persisted)
 let courseSearchResults = [];
-let courseSearchFired   = false; // prevent repeat searches on every GPS update
-let courseApiLoading    = false; // true while RapidAPI fetch is in flight
+let courseSearchFired   = false; // prevent re-running local GPS check on every position update
+let courseApiLoading    = false; // true while a name-search API call is in flight
+let courseSearchDone    = false; // true after at least one name search has completed
 
 // =============================================================
 // MOCK COURSE — Pebble Beach Golf Links
@@ -254,6 +255,7 @@ function startRoundFromCourse(course) {
   let holes;
 
   if (course.holes && course.holes.length > 0) {
+    // Local built-in course — has GPS green coords
     holes = course.holes.map((h, i) => ({
       holeNumber: i + 1,
       par:        h.par,
@@ -263,6 +265,24 @@ function startRoundFromCourse(course) {
       onGreen:    false,
       complete:   false,
     }));
+  } else if (course.scorecard && course.scorecard.length > 0) {
+    // API course — real pars + yardages from scorecard; no GPS coords
+    holes = course.scorecard.map(h => {
+      const tees    = h.tees ?? {};
+      const teeKeys = Object.keys(tees);
+      // Prefer a mid-range tee (teeBox3 = White, otherwise middle of the list)
+      const tee = tees.teeBox3 ?? tees.teeBox2 ??
+                  (teeKeys.length ? tees[teeKeys[Math.floor(teeKeys.length / 2)]] : null);
+      return {
+        holeNumber: h.Hole,
+        par:        h.Par,
+        yardage:    tee?.yards ?? null,
+        green:      null,
+        shots:      [],
+        onGreen:    false,
+        complete:   false,
+      };
+    });
   } else {
     holes = initHoles(course.totalHoles || 18);
   }
@@ -285,11 +305,14 @@ function startRoundFromCourse(course) {
  * @param {number} lat
  * @param {number} lng
  */
-async function searchNearbyCourses(lat, lng) {
+/**
+ * GPS-triggered: check only LOCAL_COURSES by proximity.
+ * The RapidAPI has no coordinate search — name search is used instead.
+ */
+function searchNearbyCourses(lat, lng) {
   const RADIUS_YARDS = 17600; // 10 miles
-
-  // ── Step 1: Show local built-in courses immediately ──────
   const results = [];
+
   LOCAL_COURSES.forEach(course => {
     const dist = haversineDistanceYards(lat, lng, course.center.lat, course.center.lng);
     if (dist <= RADIUS_YARDS) {
@@ -298,143 +321,99 @@ async function searchNearbyCourses(lat, lng) {
   });
 
   results.sort((a, b) => a.distanceYards - b.distanceYards);
-  courseSearchResults = [...results];
-  courseApiLoading    = true;
+  courseSearchResults = results;
+  renderCourseList();
+}
+
+/**
+ * Search the RapidAPI database by course name.
+ * The API has no coordinate/radius endpoint — name search is the only method.
+ * Results contain full scorecard data (real pars + yardages per hole).
+ * @param {string} query  user-typed course name
+ */
+async function searchCoursesByName(query) {
+  query = query.trim();
+  if (query.length < 2) return;
+
+  courseApiLoading  = true;
+  courseSearchDone  = false;
+  courseSearchResults = [];
   renderCourseList();
 
-  // ── Step 2: Fetch from RapidAPI ──────────────────────────
-  // No radius param — let the API return its full nearby set and enforce
-  // 10 mi ourselves client-side. Some API plans ignore radius anyway.
   try {
-    const url = `https://${RAPIDAPI.host}/courses?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`;
-    console.log('[Courses] GPS sent to API:', lat.toFixed(6), lng.toFixed(6));
-    console.log('[Courses] Request URL:', url);
+    const url = `https://${RAPIDAPI.host}/search?name=${encodeURIComponent(query)}`;
+    console.log('[Courses] Searching:', url);
 
-    const res  = await fetch(url, {
+    const res     = await fetch(url, {
       headers: {
         'X-RapidAPI-Key':  RAPIDAPI.key,
         'X-RapidAPI-Host': RAPIDAPI.host,
       },
     });
-
-    // Always read the body as text first so we can log it on error
     const rawText = await res.text();
-    console.log('[Courses] HTTP status:', res.status, '| Body length:', rawText.length, 'chars');
+    console.log('[Courses] Status:', res.status, '| Length:', rawText.length);
 
-    if (!res.ok) {
-      console.warn('[Courses] Error body:', rawText.slice(0, 500));
-    } else {
-      let data;
-      try { data = JSON.parse(rawText); }
-      catch (e) { console.warn('[Courses] JSON parse failed:', rawText.slice(0, 200)); data = []; }
+    let data;
+    try { data = JSON.parse(rawText); }
+    catch (e) { console.warn('[Courses] JSON parse error:', rawText.slice(0, 200)); data = []; }
 
-      // Accept any top-level shape: plain array, {courses:[]}, {data:[]}, {results:[]}
-      const list = Array.isArray(data)
-        ? data
-        : (data.courses ?? data.data ?? data.results ?? []);
+    // API returns an array on success, or {"message":"No courses found"} on miss
+    const list = Array.isArray(data) ? data : [];
+    console.log('[Courses] Results:', list.length);
 
-      console.log('[Courses] Items in response:', list.length);
-
-      // Log the first item so we can see the exact field names the API uses
-      if (list.length > 0) {
-        console.log('[Courses] First item (field map):', JSON.stringify(list[0]).slice(0, 600));
-      }
-
-      let added = 0, tooFar = 0, dupe = 0, noFields = 0;
-
-      list.forEach((c, i) => {
-        // Coordinates — try every field-name variant in common use
-        const courseLat = c.location?.lat  ?? c.location?.latitude  ??
-                          c.lat            ?? c.latitude             ?? null;
-        const courseLng = c.location?.lng  ?? c.location?.lon       ??
-                          c.location?.longitude ??
-                          c.lng            ?? c.lon                  ??
-                          c.longitude      ?? null;
-
-        // Name — try every variant
-        const courseName = c.club_name ?? c.course_name ?? c.name ??
-                           c.courseName ?? c.club        ?? c.title ?? null;
-
-        if (courseLat === null || courseLng === null || !courseName) {
-          console.log(`[Courses] [${i}] SKIP (missing fields) — raw:`, JSON.stringify(c).slice(0, 120));
-          noFields++;
-          return;
-        }
-
-        const dist = haversineDistanceYards(lat, lng, courseLat, courseLng);
-        const mi   = (dist / 1760).toFixed(1);
-
-        if (dist > RADIUS_YARDS) {
-          console.log(`[Courses] [${i}] TOO FAR (${mi} mi): ${courseName}`);
-          tooFar++;
-          return;
-        }
-
-        const normNew = normalizeCourseName(courseName);
-        if (results.find(r => normalizeCourseName(r.name) === normNew)) {
-          console.log(`[Courses] [${i}] DUPE: ${courseName}`);
-          dupe++;
-          return;
-        }
-
-        console.log(`[Courses] [${i}] ADDED (${mi} mi): ${courseName}`);
-        added++;
-        results.push({
-          name:          courseName,
-          totalHoles:    c.holes ?? c.num_holes ?? c.numberOfHoles ?? 18,
-          center:        { lat: courseLat, lng: courseLng },
-          holes:         null,
-          distanceYards: dist,
-          source:        'api',
-        });
-      });
-
-      console.log(`[Courses] Done — added:${added} tooFar:${tooFar} dupe:${dupe} noFields:${noFields}`);
-    }
+    courseSearchResults = list.map(c => {
+      // Extract par + yardage from scorecard (prefer middle tee — teeBox3/White)
+      const scorecard = Array.isArray(c.scorecard) ? c.scorecard : null;
+      return {
+        name:          c.name,
+        totalHoles:    parseInt(c.holes) || 18,
+        city:          c.city  ?? null,
+        state:         c.state ?? null,
+        scorecard,
+        distanceYards: null, // API has no GPS coordinates
+        source:        'api',
+      };
+    });
   } catch (err) {
-    console.warn('[Courses] Fetch error:', err.message);
+    console.warn('[Courses] Search failed:', err.message);
   }
 
-  results.sort((a, b) => a.distanceYards - b.distanceYards);
-  courseSearchResults = results;
-  courseApiLoading    = false;
+  courseApiLoading = false;
+  courseSearchDone = true;
   renderCourseList();
 }
 
-/**
- * Normalize a course name for deduplication comparisons.
- * Strips punctuation, spaces, and casing so "Zaca Creek Golf Course" and
- * "Zaca Creek" don't both appear in the list.
- */
-function normalizeCourseName(name) {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-/** Render the course list from courseSearchResults. */
+/** Render the course list. Handles GPS local results and name-search API results. */
 function renderCourseList() {
   const container = document.getElementById('course-list');
   if (!container) return;
 
-  let html = courseSearchResults.map((course, idx) => {
-    const distMiles = (course.distanceYards / 1760).toFixed(1);
+  if (courseApiLoading) {
+    container.innerHTML = `<p class="course-list__status">Searching…</p>`;
+    return;
+  }
+
+  if (courseSearchResults.length === 0) {
+    container.innerHTML = courseSearchDone
+      ? `<p class="course-list__status">No courses found — try a different name.</p>`
+      : '';
+    return;
+  }
+
+  container.innerHTML = courseSearchResults.map((course, idx) => {
     const badge = course.source === 'local'
       ? `<span class="course-card__badge">Built-in</span>`
       : '';
+    // Local courses show distance; API courses show City/State (no coordinates in API)
+    const detail = course.distanceYards != null
+      ? `${course.totalHoles} holes · ${(course.distanceYards / 1760).toFixed(1)} mi away`
+      : [course.totalHoles + ' holes', course.city, course.state].filter(Boolean).join(' · ');
     return `
       <div class="course-card" data-course-idx="${idx}">
         <div class="course-card__name">${course.name} ${badge}</div>
-        <div class="course-card__detail">${course.totalHoles} holes · ${distMiles} mi away</div>
+        <div class="course-card__detail">${detail}</div>
       </div>`;
   }).join('');
-
-  if (courseApiLoading) {
-    // Show a subtle footer while the API call is in flight
-    html += `<p class="course-list__status course-list__status--searching">Searching online database…</p>`;
-  } else if (courseSearchResults.length === 0) {
-    html = `<p class="course-list__status">No courses found within 10 miles.</p>`;
-  }
-
-  container.innerHTML = html;
 }
 
 /** Format a rating number as "+4", "-2", or "0". */
@@ -745,12 +724,12 @@ function renderNav() {
 
 // ── Course Screen ────────────────────────────────────────────
 function renderCourseScreen() {
-  // Reset search state when returning to this screen so a fresh search
-  // can be triggered next time the user taps Find My Location
+  // Reset when returning to this screen without an active GPS position
   if (!state.gpsPosition) {
     courseSearchFired   = false;
     courseSearchResults = [];
     courseApiLoading    = false;
+    courseSearchDone    = false;
     const container = document.getElementById('course-list');
     if (container) container.innerHTML = '';
   }
@@ -805,6 +784,11 @@ function renderHoleView() {
   // Undo button
   const undoBtn = document.getElementById('undo-btn');
   if (undoBtn) undoBtn.disabled = hole.shots.length === 0;
+
+  // "New Round" only appears after the player has logged at least one shot
+  const hasStarted = state.holes.some(h => h.shots.length > 0 || h.complete);
+  const newRoundBtn = document.getElementById('new-round-hole-btn');
+  if (newRoundBtn) newRoundBtn.hidden = !hasStarted;
 
   // ── Club grid ─────────────────────────────────────────────
   // Highlight selected club; show/hide Putter based on onGreen
@@ -1203,20 +1187,35 @@ function wireEvents() {
   // ── Mock GPS button ──────────────────────────────────────
   document.getElementById('mock-gps-btn').addEventListener('click', loadMockCourse);
 
-  // ── Course Screen ────────────────────────────────────────
+  // ── Course screen: name search ───────────────────────────
+  const courseInput     = document.getElementById('course-input');
+  const courseSearchBtn = document.getElementById('course-search-btn');
+
+  const triggerSearch = () => searchCoursesByName(courseInput.value);
+  courseSearchBtn.addEventListener('click', triggerSearch);
+  courseInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); triggerSearch(); }
+  });
+
+  // ── Course screen: manual start (no API search) ───────────
   document.getElementById('start-round-btn').addEventListener('click', () => {
-    const name   = document.getElementById('course-input').value.trim() || 'Unnamed Course';
-    const holes  = parseInt(document.getElementById('course-holes').value, 10) || 18;
+    const name  = document.getElementById('course-name-manual').value.trim() || 'Unnamed Course';
+    const holes = parseInt(document.getElementById('course-holes').value, 10) || 18;
     setState({
-      courseName:  name,
-      totalHoles:  holes,
-      holes:       initHoles(holes),
-      currentHole: 1,
+      courseName:   name,
+      totalHoles:   holes,
+      holes:        initHoles(holes),
+      currentHole:  1,
       activeScreen: 'hole-view',
     });
   });
 
-  // ── Hole View: new round ─────────────────────────────────
+  // ── Hole View: back to courses (keeps round intact) ───────
+  document.getElementById('back-to-courses-btn').addEventListener('click', () => {
+    navigateTo('course');
+  });
+
+  // ── Hole View: new round ──────────────────────────────────
   document.getElementById('new-round-hole-btn').addEventListener('click', () => {
     if (confirm('Are you sure? This will end your current round.')) {
       archiveRound();

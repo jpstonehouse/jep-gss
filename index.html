@@ -50,7 +50,23 @@
           <span id="gps-text" class="gps-status__text"></span>
         </div>
 
-        <!-- Nearby courses list (populated by JS) -->
+        <!-- Course search — name search hits the API database -->
+        <div class="course-search">
+          <div class="course-search__row">
+            <input
+              id="course-input"
+              class="input"
+              type="search"
+              placeholder="Search by course name…"
+              autocomplete="off"
+              autocorrect="off"
+              spellcheck="false"
+            />
+            <button id="course-search-btn" class="btn btn--primary btn--search">Search</button>
+          </div>
+        </div>
+
+        <!-- Nearby / search results list (populated by JS) -->
         <div id="course-list" class="course-list">
           <!-- Course cards injected here by app.js -->
         </div>
@@ -67,15 +83,15 @@
           </button>
         </div>
 
-        <div class="course-divider"><span>or enter manually</span></div>
+        <div class="course-divider"><span>or start manually</span></div>
 
-        <!-- Manual course entry fallback -->
+        <!-- Manual fallback — skips search, uses default pars -->
         <div class="course-manual">
           <input
-            id="course-input"
+            id="course-name-manual"
             class="input"
             type="text"
-            placeholder="Course name…"
+            placeholder="Course name (manual)…"
             autocomplete="off"
           />
           <input
@@ -87,7 +103,7 @@
             max="18"
             value="18"
           />
-          <button id="start-round-btn" class="btn btn--primary">Start Round</button>
+          <button id="start-round-btn" class="btn btn--secondary">Start Round Manually</button>
         </div>
       </div>
     </section>
@@ -99,7 +115,7 @@
     ─────────────────────────────────────────────── -->
     <section id="screen-hole-view" class="screen">
 
-      <!-- Header: hole nav + par + new round -->
+      <!-- Header: hole nav + back/new-round actions -->
       <div class="screen__header">
         <div class="hole-nav">
           <button id="prev-hole-btn" class="hole-nav__btn" aria-label="Previous hole">&#8249;</button>
@@ -110,7 +126,10 @@
           </div>
           <button id="next-hole-btn" class="hole-nav__btn" aria-label="Next hole">&#8250;</button>
         </div>
-        <button id="new-round-hole-btn" class="new-round-hole-btn">&#8635; New Round</button>
+        <div class="hole-header-actions">
+          <button id="back-to-courses-btn" class="hole-header-btn">&#8592; Courses</button>
+          <button id="new-round-hole-btn" class="hole-header-btn hole-header-btn--danger" hidden>&#8635; New Round</button>
+        </div>
       </div>
 
       <div class="screen__body">
