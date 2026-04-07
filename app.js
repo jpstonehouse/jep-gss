@@ -299,6 +299,19 @@ async function startRoundFromCourse(course) {
   });
 }
 
+/** Display raw API JSON in the on-screen debug overlay. */
+function showApiDebug(raw) {
+  const overlay = document.getElementById('api-debug-overlay');
+  const pre     = document.getElementById('api-debug-pre');
+  if (!overlay || !pre) return;
+  try {
+    pre.textContent = JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    pre.textContent = raw;
+  }
+  overlay.hidden = false;
+}
+
 /**
  * Fetch the full course detail from the API and build a holes array with GPS.
  * Logs the raw API response so we can inspect the exact data structure.
@@ -335,6 +348,7 @@ async function fetchAndBuildApiHoles(course) {
       const raw  = await res.text();
       console.log('[API Detail] Status:', res.status);
       console.log('[API Detail] Raw response:', raw);
+      showApiDebug(raw);
 
       const data = JSON.parse(raw);
       console.log('[API Detail] Parsed keys:', Object.keys(data));
@@ -769,6 +783,8 @@ function destroyHoleMap() {
     tempMarker  = null;
     pendingLL   = null;
     mapInitHole = null;
+    const container = document.getElementById('hole-map-leaflet');
+    if (container) container.style.transform = '';
   }
 }
 
@@ -837,6 +853,12 @@ function initHoleMap(hole) {
     L.circleMarker([hole.green.lat, hole.green.lng], {
       radius: 10, color: '#16a34a', fillColor: '#16a34a', fillOpacity: 0.9, weight: 3,
     }).addTo(leafletMap);
+
+    // Rotate the map container so the tee→green axis runs vertically
+    // (tee at bottom, green at top). CSS rotate(-B deg) turns direction B to face up.
+    const bearing = computeBearing(hole.tee.lat, hole.tee.lng, hole.green.lat, hole.green.lng);
+    container.style.transformOrigin = 'center center';
+    container.style.transform = `rotate(${-bearing}deg)`;
 
   } else {
     // API course with no hole GPS — show message and centre on user GPS
@@ -1656,6 +1678,11 @@ function wireEvents() {
   // ── Round review: back ───────────────────────────────────────
   document.getElementById('review-back-btn').addEventListener('click', () => {
     navigateTo('history');
+  });
+
+  // ── API debug overlay: close ─────────────────────────────────
+  document.getElementById('api-debug-close').addEventListener('click', () => {
+    document.getElementById('api-debug-overlay').hidden = true;
   });
 }
 

@@ -14,10 +14,10 @@
   <meta http-equiv="Expires" content="0" />
   <!-- Leaflet map library -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="styles.css?v=16" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
   <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js" defer></script>
-  <script src="app.js?v=15" defer></script>
+  <script src="app.js?v=16" defer></script>
   <title>JEP GSS</title>
 </head>
 <body>
@@ -309,6 +309,17 @@
     </section>
 
   </div><!-- /#app -->
+
+  <!-- ── API DEBUG OVERLAY ────────────────────────────────── -->
+  <div id="api-debug-overlay" class="api-debug-overlay" hidden>
+    <div class="api-debug-panel">
+      <div class="api-debug-header">
+        <span>API Raw Response</span>
+        <button id="api-debug-close" class="api-debug-close">&#10005; Close</button>
+      </div>
+      <pre id="api-debug-pre" class="api-debug-pre"></pre>
+    </div>
+  </div>
 
   <!-- Toast notification -->
   <div id="toast" class="toast" aria-live="polite"></div>

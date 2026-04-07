@@ -1260,3 +1260,54 @@ html, body {
   clip: rect(0,0,0,0);
   white-space: nowrap;
 }
+
+/* ── API DEBUG OVERLAY ────────────────────────────────────── */
+.api-debug-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 9999;
+  display: flex;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.api-debug-overlay[hidden] { display: none; }
+.api-debug-panel {
+  background: #1a1a2e;
+  color: #e2e8f0;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+}
+.api-debug-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #16213e;
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.api-debug-close {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.api-debug-pre {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 14px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+  word-break: break-all;
+  margin: 0;
+}
