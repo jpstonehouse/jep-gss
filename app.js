@@ -334,7 +334,7 @@ async function fetchAndBuildApiHoles(course) {
       });
       const raw  = await res.text();
       console.log('[API Detail] Status:', res.status);
-      console.log('[API Detail] Raw response:', raw.slice(0, 1000));
+      console.log('[API Detail] Raw response:', raw);
 
       const data = JSON.parse(raw);
       console.log('[API Detail] Parsed keys:', Object.keys(data));
@@ -448,7 +448,7 @@ async function searchCoursesByName(query) {
     console.log('[Courses] Results:', list.length);
     if (list.length > 0) {
       console.log('[Courses] First result keys:', Object.keys(list[0]));
-      console.log('[Courses] First result sample:', JSON.stringify(list[0]).slice(0, 800));
+      console.log('[Courses] First result sample:', JSON.stringify(list[0]));
     }
 
     const apiResults = list.map(c => {
@@ -748,7 +748,6 @@ let pendingLL     = null;    // real GPS coords of the tapped shot position
 let pickerClub    = null;
 let drawerExpanded  = false;
 let mapInitHole     = null;  // holeNumber the map is currently initialized for
-let holeTransform   = null;  // coordinate transform for current hole (see computeHoleTransform)
 
 /**
  * Compass bearing from point 1 to point 2, in degrees (0=North).
@@ -762,63 +761,14 @@ function computeBearing(lat1, lng1, lat2, lng2) {
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
-/**
- * Build a coordinate transform for a hole so the tee→green axis maps to north.
- *
- * The map is displayed north-up (no CSS rotation). Instead, all GPS coordinates
- * — shots, tee, green — are mathematically rotated around the hole centre by the
- * tee→green bearing so that, in the transformed space, the tee is directly south
- * of the green. The map tiles displayed are for the rotated coordinates (nearby
- * terrain) rather than CSS-rotating the tiles themselves, which is unreliable.
- *
- * Returns { fwd(lat,lng) → display {lat,lng}, inv(lat,lng) → real {lat,lng} }
- * or null when the hole lacks tee or green GPS data.
- */
-function computeHoleTransform(hole) {
-  if (!hole.tee || !hole.green) return null;
-
-  const cLat  = (hole.tee.lat  + hole.green.lat)  / 2;
-  const cLng  = (hole.tee.lng  + hole.green.lng)  / 2;
-  const mLat  = 111320;                                      // metres per degree latitude
-  const mLng  = mLat * Math.cos(cLat * Math.PI / 180);      // metres per degree longitude
-
-  // Rotate the coordinate system counterclockwise by the bearing so that the
-  // tee→green direction (bearing B) maps to north (the +y / north axis).
-  const bearing = computeBearing(hole.tee.lat, hole.tee.lng, hole.green.lat, hole.green.lng);
-  const α   = bearing * Math.PI / 180;
-  const cosA = Math.cos(α);
-  const sinA = Math.sin(α);
-
-  // Forward: real GPS → display (rotated) coordinates
-  const fwd = (lat, lng) => {
-    const dx  = (lng - cLng) * mLng;        // east offset (metres)
-    const dy  = (lat - cLat) * mLat;        // north offset (metres)
-    const rdx = dx * cosA - dy * sinA;      // rotated east
-    const rdy = dx * sinA + dy * cosA;      // rotated north
-    return { lat: cLat + rdy / mLat, lng: cLng + rdx / mLng };
-  };
-
-  // Inverse: display (rotated) coordinates → real GPS
-  const inv = (lat, lng) => {
-    const rdx = (lng - cLng) * mLng;
-    const rdy = (lat - cLat) * mLat;
-    const dx  =  rdx * cosA + rdy * sinA;   // transpose of rotation matrix
-    const dy  = -rdx * sinA + rdy * cosA;
-    return { lat: cLat + dy / mLat, lng: cLng + dx / mLng };
-  };
-
-  return { fwd, inv };
-}
-
 function destroyHoleMap() {
   if (leafletMap) {
     leafletMap.remove();
-    leafletMap    = null;
-    shotLayer     = null;
-    tempMarker    = null;
-    pendingLL     = null;
-    mapInitHole   = null;
-    holeTransform = null;
+    leafletMap  = null;
+    shotLayer   = null;
+    tempMarker  = null;
+    pendingLL   = null;
+    mapInitHole = null;
   }
 }
 
@@ -841,10 +791,9 @@ function initHoleMap(hole) {
   // Tear down any existing map first
   if (leafletMap) {
     leafletMap.remove();
-    leafletMap    = null;
-    shotLayer     = null;
-    tempMarker    = null;
-    holeTransform = null;
+    leafletMap  = null;
+    shotLayer   = null;
+    tempMarker  = null;
   }
 
   // Hide the "no GPS data" overlay by default; shown below if needed
@@ -853,11 +802,7 @@ function initHoleMap(hole) {
 
   const hasTeeGreen = !!(hole.tee && hole.green);
 
-  // Compute the coordinate transform (only when both tee and green GPS known).
-  holeTransform = computeHoleTransform(hole);
-
-  // Map centre: real midpoint (transform pivot = midpoint, so it maps to itself).
-  // For API courses with no hole GPS, fall back to user GPS position.
+  // Initial centre for map constructor (before fitBounds)
   const center = hasTeeGreen
     ? [(hole.tee.lat + hole.green.lat) / 2, (hole.tee.lng + hole.green.lng) / 2]
     : hole.green
@@ -878,22 +823,18 @@ function initHoleMap(hole) {
   }).addTo(leafletMap);
 
   if (hasTeeGreen) {
-    // Force zoom 18 centred on the hole midpoint.
-    // The coordinate transform aligns tee→green with north so the hole
-    // appears vertical: tee at bottom, green at top.
+    // Fit map to show tee and green with padding, capped at zoom 18
     leafletMap.invalidateSize();
-    leafletMap.setView(center, 18);
+    leafletMap.fitBounds(
+      [[hole.tee.lat, hole.tee.lng], [hole.green.lat, hole.green.lng]],
+      { padding: [60, 40], maxZoom: 18 }
+    );
 
-    // ── Debug markers: RED = tee, GREEN = green ──────────────
-    // Placed at their transformed (display) coordinates so we can verify
-    // the tee-at-bottom / green-at-top orientation is correct.
-    const teeFwd   = holeTransform.fwd(hole.tee.lat,   hole.tee.lng);
-    const greenFwd = holeTransform.fwd(hole.green.lat, hole.green.lng);
-
-    L.circleMarker([teeFwd.lat,   teeFwd.lng],   {
+    // RED = tee, GREEN = green — raw GPS coordinates
+    L.circleMarker([hole.tee.lat,   hole.tee.lng],   {
       radius: 10, color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.9, weight: 3,
     }).addTo(leafletMap);
-    L.circleMarker([greenFwd.lat, greenFwd.lng], {
+    L.circleMarker([hole.green.lat, hole.green.lng], {
       radius: 10, color: '#16a34a', fillColor: '#16a34a', fillOpacity: 0.9, weight: 3,
     }).addTo(leafletMap);
 
@@ -928,10 +869,8 @@ function drawShots(hole) {
   const gpsShots = hole.shots.filter(s => s.lat != null && s.lng != null);
   if (gpsShots.length === 0) return;
 
-  // Pre-compute display (transformed) coordinates for every shot
-  const disp = gpsShots.map(s =>
-    holeTransform ? holeTransform.fwd(s.lat, s.lng) : { lat: s.lat, lng: s.lng }
-  );
+  // Use raw GPS coordinates for all shot markers
+  const disp = gpsShots.map(s => ({ lat: s.lat, lng: s.lng }));
 
   // ── Path lines (drawn first, below dots) ────────────────────
   for (let i = 1; i < gpsShots.length; i++) {
@@ -975,13 +914,7 @@ function handleMapTap(e) {
 
   const displayLL = e.latlng;
 
-  // Convert the tapped display coordinate back to real GPS for storage.
-  // (The map shows rotated coordinates; shots must be stored as real GPS.)
-  pendingLL = holeTransform
-    ? holeTransform.inv(displayLL.lat, displayLL.lng)
-    : { lat: displayLL.lat, lng: displayLL.lng };
-
-  // Place the temp marker at the display (rotated) position
+  pendingLL = { lat: displayLL.lat, lng: displayLL.lng };
   placeTempMarker([displayLL.lat, displayLL.lng]);
 
   const hole    = currentHoleData();
