@@ -619,13 +619,14 @@ function updateWakeLock() {
 // LEAFLET MAP
 // =============================================================
 
-let leafletMap  = null;
-let shotLayer   = null;
-let tempMarker  = null;
-let pendingLL   = null;
-let pickerClub  = null;
-let drawerExpanded = false;
-let mapInitHole    = null; // holeNumber the map is currently initialized for
+let leafletMap    = null;
+let shotLayer     = null;
+let tempMarker    = null;
+let pendingLL     = null;    // real GPS coords of the tapped shot position
+let pickerClub    = null;
+let drawerExpanded  = false;
+let mapInitHole     = null;  // holeNumber the map is currently initialized for
+let holeTransform   = null;  // coordinate transform for current hole (see computeHoleTransform)
 
 /**
  * Compass bearing from point 1 to point 2, in degrees (0=North).
@@ -639,14 +640,63 @@ function computeBearing(lat1, lng1, lat2, lng2) {
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
+/**
+ * Build a coordinate transform for a hole so the tee→green axis maps to north.
+ *
+ * The map is displayed north-up (no CSS rotation). Instead, all GPS coordinates
+ * — shots, tee, green — are mathematically rotated around the hole centre by the
+ * tee→green bearing so that, in the transformed space, the tee is directly south
+ * of the green. The map tiles displayed are for the rotated coordinates (nearby
+ * terrain) rather than CSS-rotating the tiles themselves, which is unreliable.
+ *
+ * Returns { fwd(lat,lng) → display {lat,lng}, inv(lat,lng) → real {lat,lng} }
+ * or null when the hole lacks tee or green GPS data.
+ */
+function computeHoleTransform(hole) {
+  if (!hole.tee || !hole.green) return null;
+
+  const cLat  = (hole.tee.lat  + hole.green.lat)  / 2;
+  const cLng  = (hole.tee.lng  + hole.green.lng)  / 2;
+  const mLat  = 111320;                                      // metres per degree latitude
+  const mLng  = mLat * Math.cos(cLat * Math.PI / 180);      // metres per degree longitude
+
+  // Rotate the coordinate system counterclockwise by the bearing so that the
+  // tee→green direction (bearing B) maps to north (the +y / north axis).
+  const bearing = computeBearing(hole.tee.lat, hole.tee.lng, hole.green.lat, hole.green.lng);
+  const α   = bearing * Math.PI / 180;
+  const cosA = Math.cos(α);
+  const sinA = Math.sin(α);
+
+  // Forward: real GPS → display (rotated) coordinates
+  const fwd = (lat, lng) => {
+    const dx  = (lng - cLng) * mLng;        // east offset (metres)
+    const dy  = (lat - cLat) * mLat;        // north offset (metres)
+    const rdx = dx * cosA - dy * sinA;      // rotated east
+    const rdy = dx * sinA + dy * cosA;      // rotated north
+    return { lat: cLat + rdy / mLat, lng: cLng + rdx / mLng };
+  };
+
+  // Inverse: display (rotated) coordinates → real GPS
+  const inv = (lat, lng) => {
+    const rdx = (lng - cLng) * mLng;
+    const rdy = (lat - cLat) * mLat;
+    const dx  =  rdx * cosA + rdy * sinA;   // transpose of rotation matrix
+    const dy  = -rdx * sinA + rdy * cosA;
+    return { lat: cLat + dy / mLat, lng: cLng + dx / mLng };
+  };
+
+  return { fwd, inv };
+}
+
 function destroyHoleMap() {
   if (leafletMap) {
     leafletMap.remove();
-    leafletMap  = null;
-    shotLayer   = null;
-    tempMarker  = null;
-    pendingLL   = null;
-    mapInitHole = null;
+    leafletMap    = null;
+    shotLayer     = null;
+    tempMarker    = null;
+    pendingLL     = null;
+    mapInitHole   = null;
+    holeTransform = null;
   }
 }
 
@@ -669,41 +719,50 @@ function initHoleMap(hole) {
   // Tear down any existing map first
   if (leafletMap) {
     leafletMap.remove();
-    leafletMap = null;
-    shotLayer  = null;
-    tempMarker = null;
+    leafletMap    = null;
+    shotLayer     = null;
+    tempMarker    = null;
+    holeTransform = null;
   }
 
-  // Center on tee, green, or a fallback
-  const center = hole.tee
-    ? [hole.tee.lat, hole.tee.lng]
+  // Compute the coordinate transform for this hole (tee→green axis → north).
+  // All GPS coordinates are rotated through this transform before being plotted,
+  // so the hole always appears tee-at-bottom/green-at-top on a north-up map.
+  holeTransform = computeHoleTransform(hole);
+
+  // Map centre: midpoint between tee and green (which is also the transform centre,
+  // so it stays at the same lat/lng after rotation).
+  // Fall back to GPS position for API courses that lack hole GPS data.
+  const center = hole.tee && hole.green
+    ? [(hole.tee.lat + hole.green.lat) / 2, (hole.tee.lng + hole.green.lng) / 2]
     : hole.green
     ? [hole.green.lat, hole.green.lng]
-    : [36.5685, -121.9498];
+    : state.gpsPosition
+    ? [state.gpsPosition.lat, state.gpsPosition.lng]
+    : [36.5685, -121.9498]; // last-resort fallback
 
   leafletMap = L.map('hole-map-leaflet', {
     center,
     zoom: 17,
     zoomControl: false,
     attributionControl: false,
-    rotate: true,       // required by leaflet-rotate for setBearing to work
-    touchRotate: false, // disable two-finger rotation gesture
   });
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 20,
   }).addTo(leafletMap);
 
-  // Rotate: tee at bottom, green at top.
-  // Must be set before fitBounds so the rotation is applied first.
-  if (hole.tee && hole.green && leafletMap.setBearing) {
-    const bearing = computeBearing(hole.tee.lat, hole.tee.lng, hole.green.lat, hole.green.lng);
-    leafletMap.setBearing(bearing);
-  }
-
-  // Fit bounds tightly to just the current hole (tee → green).
-  // invalidateSize() first so Leaflet knows the container's real pixel dimensions.
-  if (hole.tee && hole.green) {
+  // Fit the map to show only the current hole: use the transformed tee/green
+  // coordinates so the hole is vertical (tee south, green north) in the viewport.
+  if (holeTransform) {
+    const teeFwd   = holeTransform.fwd(hole.tee.lat,   hole.tee.lng);
+    const greenFwd = holeTransform.fwd(hole.green.lat, hole.green.lng);
+    leafletMap.invalidateSize();
+    leafletMap.fitBounds(
+      [[teeFwd.lat, teeFwd.lng], [greenFwd.lat, greenFwd.lng]],
+      { padding: [60, 40], maxZoom: 18 }
+    );
+  } else if (hole.tee && hole.green) {
     leafletMap.invalidateSize();
     leafletMap.fitBounds(
       [[hole.tee.lat, hole.tee.lng], [hole.green.lat, hole.green.lng]],
@@ -723,6 +782,8 @@ function initHoleMap(hole) {
 
 /**
  * Clear and redraw all shot markers + path lines for a hole.
+ * All real GPS coordinates are run through holeTransform.fwd() before
+ * being plotted so shots appear correctly on the rotated coordinate system.
  */
 function drawShots(hole) {
   if (!shotLayer) return;
@@ -731,17 +792,22 @@ function drawShots(hole) {
   const gpsShots = hole.shots.filter(s => s.lat != null && s.lng != null);
   if (gpsShots.length === 0) return;
 
+  // Pre-compute display (transformed) coordinates for every shot
+  const disp = gpsShots.map(s =>
+    holeTransform ? holeTransform.fwd(s.lat, s.lng) : { lat: s.lat, lng: s.lng }
+  );
+
   // ── Path lines (drawn first, below dots) ────────────────────
   for (let i = 1; i < gpsShots.length; i++) {
-    const a = gpsShots[i - 1];
-    const b = gpsShots[i];
+    const a = disp[i - 1];
+    const b = disp[i];
 
-    if (isPenaltyShot(a)) {
+    if (isPenaltyShot(gpsShots[i - 1])) {
       L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
         color: '#c4b5fd', weight: 2, dashArray: '5 4', opacity: 0.8,
       }).addTo(shotLayer);
     } else {
-      const isPutt = a.club === 'P';
+      const isPutt = gpsShots[i - 1].club === 'P';
       L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
         color:  isPutt ? '#7dd3fc' : '#6b7280',
         weight: isPutt ? 2.5 : 2,
@@ -751,18 +817,19 @@ function drawShots(hole) {
 
   // ── Shot dots ─────────────────────────────────────────────────
   gpsShots.forEach((shot, i) => {
+    const pos  = disp[i];
     const clr  = SHOT_COLORS[shot.rating] ?? { bg: '#f3f4f6', border: '#9ca3af', text: '#4b5563' };
     const size = shot.club === 'P' ? 26 : 30;
     const dash = isPenaltyShot(shot) ? 'border-style:dashed;' : '';
 
     const icon = L.divIcon({
-      className: '',
-      iconSize:  [size, size],
+      className:  '',
+      iconSize:   [size, size],
       iconAnchor: [size / 2, size / 2],
       html: `<div class="shot-dot" style="width:${size}px;height:${size}px;background:${clr.bg};border-color:${clr.border};color:${clr.text};${dash}">${shot.rating}<div class="shot-num-badge">${i + 1}</div></div>`,
     });
 
-    L.marker([shot.lat, shot.lng], { icon, interactive: false }).addTo(shotLayer);
+    L.marker([pos.lat, pos.lng], { icon, interactive: false }).addTo(shotLayer);
   });
 }
 
@@ -770,8 +837,16 @@ function handleMapTap(e) {
   // Ignore taps while shot picker is open
   if (!document.getElementById('shot-picker').hidden) return;
 
-  pendingLL = e.latlng;
-  placeTempMarker(pendingLL);
+  const displayLL = e.latlng;
+
+  // Convert the tapped display coordinate back to real GPS for storage.
+  // (The map shows rotated coordinates; shots must be stored as real GPS.)
+  pendingLL = holeTransform
+    ? holeTransform.inv(displayLL.lat, displayLL.lng)
+    : { lat: displayLL.lat, lng: displayLL.lng };
+
+  // Place the temp marker at the display (rotated) position
+  placeTempMarker([displayLL.lat, displayLL.lng]);
 
   const hole    = currentHoleData();
   const shotNum = (hole?.shots.length ?? 0) + 1;
@@ -973,7 +1048,9 @@ function renderScreenVisibility() {
 function renderNav() {
   const nav = document.getElementById('nav');
   if (!nav) return;
-  const hideNav = state.activeScreen === 'course' || state.activeScreen === 'round-review';
+  // Hide nav on course screen only when no round is active, and always on round-review
+  const inRound = state.holes.length > 0;
+  const hideNav = (state.activeScreen === 'course' && !inRound) || state.activeScreen === 'round-review';
   nav.classList.toggle('nav--hidden', hideNav);
 
   nav.querySelectorAll('.nav__btn').forEach((btn) => {
@@ -1403,6 +1480,9 @@ function wireEvents() {
       activeScreen: 'hole-view',
     });
   });
+
+  // ── Hole header: back to course screen (round data preserved) ──
+  document.getElementById('back-btn').addEventListener('click', () => navigateTo('course'));
 
   // ── Hole header: prev / next hole ───────────────────────────
   document.getElementById('prev-hole-btn').addEventListener('click', () => {

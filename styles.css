@@ -177,6 +177,20 @@ html, body {
   gap: 4px;
 }
 
+.hole-header__back {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 0 var(--space-sm);
+  min-height: 44px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
 .hole-header__btn {
   background: none;
   border: none;
