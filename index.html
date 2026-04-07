@@ -12,12 +12,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <!-- Leaflet map library -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="styles.css?v=16" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-  <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js" defer></script>
-  <script src="app.js?v=16" defer></script>
+  <link rel="stylesheet" href="styles.css?v=17" />
+  <script src="app.js?v=17" defer></script>
   <title>JEP GSS</title>
 </head>
 <body>
@@ -127,13 +123,8 @@
         <button id="next-hole-btn" class="hole-header__btn" aria-label="Next hole">&#8594;</button>
       </div>
 
-      <!-- Leaflet map fills all remaining space -->
-      <div id="hole-map-leaflet" class="hole-map-leaflet"></div>
-
-      <!-- Shown for API courses that have no hole GPS coordinates -->
-      <div id="map-no-gps-msg" class="map-no-gps-msg" hidden>
-        Course map not available — tap anywhere to log shot locations
-      </div>
+      <!-- SVG hole diagram — fills remaining space, scrolls for long holes -->
+      <div id="hole-svg-wrap" class="hole-svg-wrap"></div>
 
       <!-- ── Shot confirmation card (shown after tap) ────────────
            Appears near centre screen with Yes / Re-tap buttons.

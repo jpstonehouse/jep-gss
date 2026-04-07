@@ -232,76 +232,15 @@ html, body {
   text-overflow: ellipsis;
 }
 
-/* ── LEAFLET MAP CONTAINER ────────────────────────────────── */
-.hole-map-leaflet {
+/* ── SVG HOLE RENDERER CONTAINER ─────────────────────────── */
+.hole-svg-wrap {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   z-index: 1;
 }
-
-/* Leaflet attribution small text */
-.leaflet-control-attribution {
-  font-size: 9px !important;
-}
-
-/* ── MAP SHOT MARKERS (DivIcon) ───────────────────────────── */
-.shot-dot {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 2px solid;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 800;
-  font-family: -apple-system, sans-serif;
-  position: relative;
-  box-shadow: 0 1px 5px rgba(0,0,0,0.25);
-  cursor: pointer;
-}
-
-.shot-num-badge {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: #1a1a2e;
-  color: #fff;
-  font-size: 8px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-}
-
-.temp-marker-dot {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #ef4444;
-  border: 3px solid white;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
-}
-
-/* Tee / green map labels */
-.map-tee-label,
-.map-green-label {
-  background: rgba(255,255,255,0.85);
-  border-radius: 3px;
-  padding: 1px 4px;
-  font-size: 9px;
-  font-weight: 700;
-  font-family: -apple-system, sans-serif;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-}
-
-.map-tee-label   { color: #7c5c00; }
-.map-green-label { color: #065f46; }
 
 /* ── SHOT CONFIRM OVERLAY ─────────────────────────────────── */
 .shot-confirm {
@@ -760,24 +699,6 @@ html, body {
   background: #f0fdf4;
 }
 
-/* Map overlay message for courses without hole GPS data */
-.map-no-gps-msg {
-  position: absolute;
-  top: 70px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #d1d5db;
-  border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  text-align: center;
-  z-index: 200;
-  pointer-events: none;
-  white-space: nowrap;
-  box-shadow: var(--shadow-sm);
-}
 
 /* Course loading / empty states */
 .course-loading,

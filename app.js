@@ -618,7 +618,7 @@ function currentHoleData() {
  * Add a shot tapped on the map. Called after club + rating are selected.
  * Uses direct persist() (not setState()) to avoid re-initializing the map.
  */
-function addShot(club, rating, lat, lng) {
+function addShot(club, rating, lat, lng, svgXPct = null, svgYPct = null) {
   const hole = currentHoleData();
   if (!hole) return;
 
@@ -627,8 +627,10 @@ function addShot(club, rating, lat, lng) {
     club,
     rating,
     ratingVal: JEP_RATINGS[rating] ?? 0,
-    lat:       lat ?? null,
-    lng:       lng ?? null,
+    lat:       lat    ?? null,
+    lng:       lng    ?? null,
+    svgXPct:   svgXPct ?? null,
+    svgYPct:   svgYPct ?? null,
   });
 
   persist();
@@ -639,7 +641,7 @@ function undoLastShot() {
   if (!hole || hole.shots.length === 0) return;
   hole.shots.pop();
   persist();
-  drawShots(hole);
+  drawShotsSVG(hole);
   updateHoleDrawer();
 }
 
@@ -648,7 +650,7 @@ function undoLastShot() {
 // =============================================================
 
 function navigateTo(screen) {
-  if (screen === 'course') destroyHoleMap();
+  if (screen === 'course') destroyHoleSVG();
   setState({ activeScreen: screen });
 }
 
@@ -752,43 +754,20 @@ function updateWakeLock() {
 }
 
 // =============================================================
-// LEAFLET MAP
+// SVG HOLE RENDERER
 // =============================================================
 
-let leafletMap    = null;
-let shotLayer     = null;
-let tempMarker    = null;
-let pendingLL     = null;    // real GPS coords of the tapped shot position
+const SVG_W       = 320;   // fixed viewBox width
+const PX_PER_YARD = 3;     // vertical scale: 3 SVG units per yard
+
+let pendingLL     = null;  // { lat, lng } real GPS of pending tap (null for no-GPS courses)
+let pendingSvgPt  = null;  // { x, y } SVG-space coords of pending tap
 let pickerClub    = null;
-let drawerExpanded  = false;
-let mapInitHole     = null;  // holeNumber the map is currently initialized for
+let drawerExpanded = false;
+let svgInitHole   = null;  // holeNumber the SVG is currently drawn for
+let svgProjection = null;  // GPS↔SVG projection for the current hole
 
-/**
- * Compass bearing from point 1 to point 2, in degrees (0=North).
- */
-function computeBearing(lat1, lng1, lat2, lng2) {
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δλ = (lng2 - lng1) * Math.PI / 180;
-  const y  = Math.sin(Δλ) * Math.cos(φ2);
-  const x  = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-}
-
-function destroyHoleMap() {
-  if (leafletMap) {
-    leafletMap.remove();
-    leafletMap  = null;
-    shotLayer   = null;
-    tempMarker  = null;
-    pendingLL   = null;
-    mapInitHole = null;
-    const container = document.getElementById('hole-map-leaflet');
-    if (container) container.style.transform = '';
-  }
-}
-
-// Dot color scheme per JEP rating
+// Dot color scheme per JEP rating (also used by the drawer shot-chip list)
 const SHOT_COLORS = {
   '!':  { bg: '#fef3c7', border: '#b45309', text: '#92400e' },
   '++': { bg: '#d1fae5', border: '#059669', text: '#065f46' },
@@ -800,166 +779,242 @@ const SHOT_COLORS = {
   'L':  { bg: '#ede9fe', border: '#7c3aed', text: '#6d28d9' },
 };
 
-function initHoleMap(hole) {
-  const container = document.getElementById('hole-map-leaflet');
-  if (!container) return;
-
-  // Tear down any existing map first
-  if (leafletMap) {
-    leafletMap.remove();
-    leafletMap  = null;
-    shotLayer   = null;
-    tempMarker  = null;
-  }
-
-  // Hide the "no GPS data" overlay by default; shown below if needed
-  const mapMsgEl = document.getElementById('map-no-gps-msg');
-  if (mapMsgEl) mapMsgEl.hidden = true;
-
-  const hasTeeGreen = !!(hole.tee && hole.green);
-
-  // Initial centre for map constructor (before fitBounds)
-  const center = hasTeeGreen
-    ? [(hole.tee.lat + hole.green.lat) / 2, (hole.tee.lng + hole.green.lng) / 2]
-    : hole.green
-    ? [hole.green.lat, hole.green.lng]
-    : state.gpsPosition
-    ? [state.gpsPosition.lat, state.gpsPosition.lng]
-    : [36.5685, -121.9498];
-
-  leafletMap = L.map('hole-map-leaflet', {
-    center,
-    zoom: 17,
-    zoomControl: false,
-    attributionControl: false,
-  });
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 20,
-  }).addTo(leafletMap);
-
-  if (hasTeeGreen) {
-    // Fit map to show tee and green with padding, capped at zoom 18
-    leafletMap.invalidateSize();
-    leafletMap.fitBounds(
-      [[hole.tee.lat, hole.tee.lng], [hole.green.lat, hole.green.lng]],
-      { padding: [60, 40], maxZoom: 18 }
-    );
-
-    // RED = tee, GREEN = green — raw GPS coordinates
-    L.circleMarker([hole.tee.lat,   hole.tee.lng],   {
-      radius: 10, color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.9, weight: 3,
-    }).addTo(leafletMap);
-    L.circleMarker([hole.green.lat, hole.green.lng], {
-      radius: 10, color: '#16a34a', fillColor: '#16a34a', fillOpacity: 0.9, weight: 3,
-    }).addTo(leafletMap);
-
-    // Rotate the map container so the tee→green axis runs vertically
-    // (tee at bottom, green at top). CSS rotate(-B deg) turns direction B to face up.
-    const bearing = computeBearing(hole.tee.lat, hole.tee.lng, hole.green.lat, hole.green.lng);
-    container.style.transformOrigin = 'center center';
-    container.style.transform = `rotate(${-bearing}deg)`;
-
-  } else {
-    // API course with no hole GPS — show message and centre on user GPS
-    if (mapMsgEl) mapMsgEl.hidden = false;
-    if (state.gpsPosition) {
-      leafletMap.invalidateSize();
-      leafletMap.setView([state.gpsPosition.lat, state.gpsPosition.lng], 17);
-    }
-  }
-
-  // Layer for shots — cleared and redrawn after each logged shot
-  shotLayer = L.layerGroup().addTo(leafletMap);
-
-  // Tap handler
-  leafletMap.on('click', handleMapTap);
-
-  drawShots(hole);
-  mapInitHole = hole.holeNumber;
+/** SVG height in viewBox units from hole yardage. */
+function getSvgHeight(hole) {
+  return Math.max((hole.yardage || 150) * PX_PER_YARD, 350);
 }
 
 /**
- * Clear and redraw all shot markers + path lines for a hole.
- * All real GPS coordinates are run through holeTransform.fwd() before
- * being plotted so shots appear correctly on the rotated coordinate system.
+ * Build the GPS↔SVG projection for a hole.
+ *
+ * Coordinate system: along-axis = 0 at tee (SVG bottom), holeLen at green (SVG top).
+ * Across-axis = metres to the right of the tee→green line.
+ * scale = SVG units per metre (derived from svgH / physical hole length).
  */
-function drawShots(hole) {
-  if (!shotLayer) return;
-  shotLayer.clearLayers();
+function getHoleProjection(hole, svgH) {
+  if (!hole.tee || !hole.green) return null;
+  const mLat = 111320;
+  const mLng = mLat * Math.cos(hole.tee.lat * Math.PI / 180);
+  const gx   = (hole.green.lng - hole.tee.lng) * mLng;   // metres east to green
+  const gy   = (hole.green.lat - hole.tee.lat) * mLat;   // metres north to green
+  const holeLen = Math.sqrt(gx * gx + gy * gy);
+  if (holeLen < 1) return null;
+  const uAlong  = { x: gx / holeLen, y: gy / holeLen };      // unit vec tee→green
+  const uAcross = { x: gy / holeLen, y: -gx / holeLen };     // unit vec rightward ⊥
+  return { mLat, mLng, holeLen, uAlong, uAcross, scale: svgH / holeLen };
+}
 
-  const gpsShots = hole.shots.filter(s => s.lat != null && s.lng != null);
-  if (gpsShots.length === 0) return;
+/** GPS → SVG coordinate space. */
+function gpsToSvgCoord(lat, lng, hole, svgH, proj) {
+  if (!proj) return { x: SVG_W / 2, y: svgH / 2 };
+  const dx    = (lng - hole.tee.lng) * proj.mLng;
+  const dy    = (lat - hole.tee.lat) * proj.mLat;
+  const along  = dx * proj.uAlong.x  + dy * proj.uAlong.y;
+  const across = dx * proj.uAcross.x + dy * proj.uAcross.y;
+  return {
+    x: SVG_W / 2 + across * proj.scale,
+    y: svgH      - along  * proj.scale,
+  };
+}
 
-  // Use raw GPS coordinates for all shot markers
-  const disp = gpsShots.map(s => ({ lat: s.lat, lng: s.lng }));
+/** SVG coordinate space → GPS. */
+function svgToGpsCoord(svgX, svgY, hole, svgH, proj) {
+  if (!proj) return null;
+  const along  = (svgH - svgY) / proj.scale;
+  const across = (svgX - SVG_W / 2) / proj.scale;
+  const dx = along * proj.uAlong.x + across * proj.uAcross.x;
+  const dy = along * proj.uAlong.y + across * proj.uAcross.y;
+  return {
+    lat: hole.tee.lat + dy / proj.mLat,
+    lng: hole.tee.lng + dx / proj.mLng,
+  };
+}
 
-  // ── Path lines (drawn first, below dots) ────────────────────
-  for (let i = 1; i < gpsShots.length; i++) {
-    const a = disp[i - 1];
-    const b = disp[i];
+/**
+ * Build (or rebuild) the SVG hole diagram inside #hole-svg-wrap.
+ * Green background, white ellipse at top (green), white rect at bottom (tee).
+ * Height scales with yardage (3 px/yd). Container scrolls if taller than viewport.
+ */
+function initHoleSVG(hole) {
+  const wrap = document.getElementById('hole-svg-wrap');
+  if (!wrap) return;
 
-    if (isPenaltyShot(gpsShots[i - 1])) {
-      L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
-        color: '#c4b5fd', weight: 2, dashArray: '5 4', opacity: 0.8,
-      }).addTo(shotLayer);
-    } else {
-      const isPutt = gpsShots[i - 1].club === 'P';
-      L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
-        color:  isPutt ? '#7dd3fc' : '#6b7280',
-        weight: isPutt ? 2.5 : 2,
-      }).addTo(shotLayer);
+  const svgH        = getSvgHeight(hole);
+  const hasTeeGreen = !!(hole.tee && hole.green);
+  svgProjection = getHoleProjection(hole, svgH);
+  svgInitHole   = hole.holeNumber;
+  pendingSvgPt  = null;
+  pendingLL     = null;
+
+  const teeY      = svgH - 70;
+  const noGpsMsg  = hasTeeGreen ? '' :
+    `<text x="160" y="${(svgH / 2).toFixed(0)}" text-anchor="middle"
+           font-size="14" fill="rgba(255,255,255,0.7)">Tap to plot shots</text>`;
+
+  wrap.innerHTML = `
+    <svg id="hole-svg" viewBox="0 0 ${SVG_W} ${svgH}" width="100%"
+         style="display:block;touch-action:manipulation;">
+      <!-- fairway background -->
+      <rect width="${SVG_W}" height="${svgH}" fill="#1e5c38"/>
+      <!-- fairway strip -->
+      <rect x="110" y="72" width="100" height="${svgH - 152}" fill="#2a7a4a" rx="45"/>
+      <!-- green (white ellipse, top) -->
+      <ellipse cx="160" cy="52" rx="65" ry="40" fill="white" opacity="0.92"/>
+      <!-- hole cup -->
+      <circle cx="160" cy="52" r="5" fill="#444"/>
+      <!-- tee box (white rect, bottom) -->
+      <rect x="115" y="${teeY}" width="90" height="45" fill="white" opacity="0.92" rx="5"/>
+      <text x="160" y="${teeY + 28}" text-anchor="middle" font-size="13" fill="#444" font-weight="bold">TEE</text>
+      ${noGpsMsg}
+      <!-- shot paths -->
+      <g id="svg-lines"></g>
+      <!-- shot dots -->
+      <g id="svg-dots"></g>
+      <!-- pending tap indicator -->
+      <circle id="svg-temp" cx="-200" cy="-200" r="12"
+              fill="rgba(255,255,255,0.25)" stroke="white" stroke-width="2.5"
+              stroke-dasharray="5 3" pointer-events="none"/>
+    </svg>`;
+
+  document.getElementById('hole-svg').addEventListener('click', handleSVGTap);
+  drawShotsSVG(hole);
+}
+
+function destroyHoleSVG() {
+  const wrap = document.getElementById('hole-svg-wrap');
+  if (wrap) wrap.innerHTML = '';
+  svgInitHole   = null;
+  svgProjection = null;
+  pendingSvgPt  = null;
+  pendingLL     = null;
+}
+
+/** Convert a browser client coordinate to SVG viewBox space (handles CSS scaling). */
+function clientToSvgPt(clientX, clientY) {
+  const svg = document.getElementById('hole-svg');
+  if (!svg) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+function handleSVGTap(e) {
+  if (!document.getElementById('shot-picker').hidden)  return;
+  if (!document.getElementById('shot-confirm').hidden) return;
+
+  const svgPt = clientToSvgPt(e.clientX, e.clientY);
+  if (!svgPt) return;
+
+  const hole = currentHoleData();
+  if (!hole)  return;
+
+  const svgH   = getSvgHeight(hole);
+  pendingSvgPt = { x: svgPt.x, y: svgPt.y };
+  pendingLL    = svgProjection
+    ? svgToGpsCoord(svgPt.x, svgPt.y, hole, svgH, svgProjection)
+    : null;
+
+  placeTempDot(svgPt.x, svgPt.y);
+  showShotConfirm((hole.shots.length ?? 0) + 1);
+}
+
+function placeTempDot(x, y) {
+  const el = document.getElementById('svg-temp');
+  if (el) { el.setAttribute('cx', String(x)); el.setAttribute('cy', String(y)); }
+}
+
+function removeTempDot() {
+  const el = document.getElementById('svg-temp');
+  if (el) { el.setAttribute('cx', '-200'); el.setAttribute('cy', '-200'); }
+  pendingSvgPt = null;
+}
+
+/**
+ * Redraw all shot dots and connecting lines on the SVG.
+ * GPS shots are projected via svgProjection; no-GPS shots use stored svgXPct/svgYPct.
+ */
+function drawShotsSVG(hole) {
+  const linesG = document.getElementById('svg-lines');
+  const dotsG  = document.getElementById('svg-dots');
+  if (!linesG || !dotsG) return;
+  linesG.innerHTML = '';
+  dotsG.innerHTML  = '';
+
+  const shots = hole.shots;
+  if (shots.length === 0) return;
+
+  const svgH = getSvgHeight(hole);
+  const ns   = 'http://www.w3.org/2000/svg';
+
+  // Resolve display position for each shot
+  const pos = shots.map(s => {
+    if (s.lat != null && svgProjection) {
+      return gpsToSvgCoord(s.lat, s.lng, hole, svgH, svgProjection);
     }
+    if (s.svgXPct != null) {
+      return { x: s.svgXPct * SVG_W, y: s.svgYPct * svgH };
+    }
+    return { x: SVG_W / 2, y: svgH / 2 };
+  });
+
+  // ── Connecting lines (drawn first, below dots) ────────────────
+  for (let i = 1; i < shots.length; i++) {
+    const a = pos[i - 1], b = pos[i];
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', String(a.x)); line.setAttribute('y1', String(a.y));
+    line.setAttribute('x2', String(b.x)); line.setAttribute('y2', String(b.y));
+    const isPutt = shots[i - 1].club === 'P';
+    const isPen  = isPenaltyShot(shots[i - 1]);
+    line.setAttribute('stroke', isPen ? '#c4b5fd' : isPutt ? '#7dd3fc' : 'rgba(255,255,255,0.8)');
+    line.setAttribute('stroke-width', isPutt ? '2.5' : '2');
+    if (isPen) line.setAttribute('stroke-dasharray', '5 4');
+    linesG.appendChild(line);
   }
 
   // ── Shot dots ─────────────────────────────────────────────────
-  gpsShots.forEach((shot, i) => {
-    const pos  = disp[i];
-    const clr  = SHOT_COLORS[shot.rating] ?? { bg: '#f3f4f6', border: '#9ca3af', text: '#4b5563' };
-    const size = shot.club === 'P' ? 26 : 30;
-    const dash = isPenaltyShot(shot) ? 'border-style:dashed;' : '';
+  shots.forEach((shot, i) => {
+    const p   = pos[i];
+    const clr = SHOT_COLORS[shot.rating] ?? { bg: '#f3f4f6', border: '#9ca3af', text: '#4b5563' };
+    const r   = shot.club === 'P' ? 12 : 14;
 
-    const icon = L.divIcon({
-      className:  '',
-      iconSize:   [size, size],
-      iconAnchor: [size / 2, size / 2],
-      html: `<div class="shot-dot" style="width:${size}px;height:${size}px;background:${clr.bg};border-color:${clr.border};color:${clr.text};${dash}">${shot.rating}<div class="shot-num-badge">${i + 1}</div></div>`,
-    });
+    const g = document.createElementNS(ns, 'g');
 
-    L.marker([pos.lat, pos.lng], { icon, interactive: false }).addTo(shotLayer);
+    const circle = document.createElementNS(ns, 'circle');
+    circle.setAttribute('cx', String(p.x));
+    circle.setAttribute('cy', String(p.y));
+    circle.setAttribute('r',  String(r));
+    circle.setAttribute('fill',         clr.bg);
+    circle.setAttribute('stroke',       clr.border);
+    circle.setAttribute('stroke-width', '1.5');
+    if (isPenaltyShot(shot)) circle.setAttribute('stroke-dasharray', '4 2');
+    g.appendChild(circle);
+
+    const ratingTxt = document.createElementNS(ns, 'text');
+    ratingTxt.setAttribute('x',                  String(p.x));
+    ratingTxt.setAttribute('y',                  String(p.y));
+    ratingTxt.setAttribute('text-anchor',         'middle');
+    ratingTxt.setAttribute('dominant-baseline',   'central');
+    ratingTxt.setAttribute('font-size',           shot.rating.length > 1 ? '7' : '9');
+    ratingTxt.setAttribute('font-weight',         'bold');
+    ratingTxt.setAttribute('fill',                clr.text);
+    ratingTxt.textContent = shot.rating;
+    g.appendChild(ratingTxt);
+
+    // Shot-number badge (top-right of dot)
+    const badge = document.createElementNS(ns, 'text');
+    badge.setAttribute('x',                String(p.x + r));
+    badge.setAttribute('y',                String(p.y - r));
+    badge.setAttribute('text-anchor',      'middle');
+    badge.setAttribute('dominant-baseline','central');
+    badge.setAttribute('font-size',        '7');
+    badge.setAttribute('font-weight',      'bold');
+    badge.setAttribute('fill',             'white');
+    badge.textContent = String(i + 1);
+    g.appendChild(badge);
+
+    dotsG.appendChild(g);
   });
-}
-
-function handleMapTap(e) {
-  // Ignore taps while shot picker is open
-  if (!document.getElementById('shot-picker').hidden) return;
-
-  const displayLL = e.latlng;
-
-  pendingLL = { lat: displayLL.lat, lng: displayLL.lng };
-  placeTempMarker([displayLL.lat, displayLL.lng]);
-
-  const hole    = currentHoleData();
-  const shotNum = (hole?.shots.length ?? 0) + 1;
-  showShotConfirm(shotNum);
-}
-
-function placeTempMarker(latlng) {
-  removeTempMarker();
-  const icon = L.divIcon({
-    className:  '',
-    iconSize:   [18, 18],
-    iconAnchor: [9, 9],
-    html: '<div class="temp-marker-dot"></div>',
-  });
-  tempMarker = L.marker(latlng, { icon, interactive: false }).addTo(leafletMap);
-}
-
-function removeTempMarker() {
-  if (tempMarker && leafletMap) {
-    leafletMap.removeLayer(tempMarker);
-    tempMarker = null;
-  }
 }
 
 // =============================================================
@@ -977,7 +1032,7 @@ function hideShotConfirm() {
 
 function cancelConfirm() {
   hideShotConfirm();
-  removeTempMarker();
+  removeTempDot();
   pendingLL = null;
 }
 
@@ -1006,7 +1061,7 @@ function hideShotPicker() {
 
 function cancelPicker() {
   hideShotPicker();
-  removeTempMarker();
+  removeTempDot();
   pendingLL = null;
 }
 
@@ -1033,20 +1088,23 @@ function pickerSelectClub(club) {
  * A rating was tapped — log the shot and close the picker.
  */
 function logShotFromPicker(rating) {
-  if (!pickerClub || !pendingLL) return;
+  if (!pickerClub) return;
+  if (!pendingLL && !pendingSvgPt) return;
 
-  const club = pickerClub;
-  const lat  = pendingLL.lat;
-  const lng  = pendingLL.lng;
+  const hole    = currentHoleData();
+  const svgH    = getSvgHeight(hole);
+  const lat     = pendingLL?.lat    ?? null;
+  const lng     = pendingLL?.lng    ?? null;
+  const svgXPct = pendingSvgPt ? pendingSvgPt.x / SVG_W : null;
+  const svgYPct = pendingSvgPt ? pendingSvgPt.y / svgH  : null;
 
-  addShot(club, rating, lat, lng);
+  addShot(pickerClub, rating, lat, lng, svgXPct, svgYPct);
   hideShotPicker();
-  removeTempMarker();
-  pendingLL  = null;
-  pickerClub = null;
+  removeTempDot();
+  pendingLL    = null;
+  pickerClub   = null;
 
-  const hole = currentHoleData();
-  drawShots(hole);
+  drawShotsSVG(hole);
   updateHoleDrawer();
 
   if (rating === '!') {
@@ -1182,11 +1240,9 @@ function renderHoleView() {
   document.getElementById('prev-hole-btn').disabled = state.currentHole <= 1;
   document.getElementById('next-hole-btn').disabled = state.currentHole >= state.totalHoles;
 
-  // Init or update map
-  if (mapInitHole !== state.currentHole) {
-    initHoleMap(hole);
-  } else if (leafletMap) {
-    leafletMap.invalidateSize();
+  // Init or re-init SVG when switching holes
+  if (svgInitHole !== state.currentHole) {
+    initHoleSVG(hole);
   }
 
   updateHoleDrawer();
@@ -1448,7 +1504,7 @@ function toggleDevPanel() {
 function endRound() {
   if (confirm('End round and save to history?')) {
     archiveRound();
-    destroyHoleMap();
+    destroyHoleSVG();
     setState({
       courseName:     null,
       totalHoles:     18,
@@ -1648,7 +1704,7 @@ function wireEvents() {
   document.getElementById('new-round-btn').addEventListener('click', () => {
     if (confirm('Start a new round? Current round will be saved locally.')) {
       archiveRound();
-      destroyHoleMap();
+      destroyHoleSVG();
       setState({
         courseName:  null,
         totalHoles:  18,
