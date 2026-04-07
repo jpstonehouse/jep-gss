@@ -77,6 +77,7 @@ const LOCAL_COURSES = [
 ];
 
 let courseSearchResults = [];
+let nearbyResults       = []; // GPS-found or default local courses; merged under API results
 let courseSearchFired   = false;
 let courseApiLoading    = false;
 let courseSearchDone    = false;
@@ -320,7 +321,8 @@ function searchNearbyCourses(lat, lng) {
   });
 
   results.sort((a, b) => a.distanceYards - b.distanceYards);
-  courseSearchResults = results;
+  nearbyResults       = results;
+  courseSearchResults = [...nearbyResults];
   renderCourseList();
 }
 
@@ -353,7 +355,7 @@ async function searchCoursesByName(query) {
     const list = Array.isArray(data) ? data : [];
     console.log('[Courses] Results:', list.length);
 
-    courseSearchResults = list.map(c => {
+    const apiResults = list.map(c => {
       const scorecard = Array.isArray(c.scorecard) ? c.scorecard : null;
       return {
         name:          c.name,
@@ -365,12 +367,25 @@ async function searchCoursesByName(query) {
         source:        'api',
       };
     });
+    // Merge: nearby/local first so they're always visible, API results below
+    courseSearchResults = [...nearbyResults, ...apiResults];
   } catch (err) {
     console.warn('[Courses] Search failed:', err.message);
+    courseSearchResults = [...nearbyResults];
   }
 
   courseApiLoading = false;
   courseSearchDone = true;
+  renderCourseList();
+}
+
+/** Reset search results back to nearby/local courses and clear the input. */
+function clearCourseSearch() {
+  courseSearchResults = [...nearbyResults];
+  courseApiLoading    = false;
+  courseSearchDone    = false;
+  const inp = document.getElementById('course-input');
+  if (inp) inp.value = '';
   renderCourseList();
 }
 
@@ -390,10 +405,15 @@ function renderCourseList() {
     return;
   }
 
-  container.innerHTML = courseSearchResults.map((course, idx) => {
-    const badge  = course.source === 'local'
-      ? `<span class="course-card__badge">Built-in</span>`
-      : '';
+  const hasApiResults = courseSearchResults.some(c => c.source === 'api');
+  const clearHtml = hasApiResults
+    ? `<button class="course-clear-btn" id="course-clear-btn">&#8592; Clear Search</button>`
+    : '';
+
+  container.innerHTML = clearHtml + courseSearchResults.map((course, idx) => {
+    const badge = course.source === 'local'
+      ? `<span class="course-card__badge">Nearby</span>`
+      : `<span class="course-card__badge course-card__badge--search">Search</span>`;
     const detail = course.distanceYards != null
       ? `${course.totalHoles} holes · ${(course.distanceYards / 1760).toFixed(1)} mi away`
       : [course.totalHoles + ' holes', course.city, course.state].filter(Boolean).join(' · ');
@@ -403,6 +423,10 @@ function renderCourseList() {
         <div class="course-card__detail">${detail}</div>
       </div>`;
   }).join('');
+
+  if (hasApiResults) {
+    document.getElementById('course-clear-btn')?.addEventListener('click', clearCourseSearch);
+  }
 }
 
 // =============================================================
@@ -725,21 +749,24 @@ function initHoleMap(hole) {
     holeTransform = null;
   }
 
-  // Compute the coordinate transform for this hole (tee→green axis → north).
-  // All GPS coordinates are rotated through this transform before being plotted,
-  // so the hole always appears tee-at-bottom/green-at-top on a north-up map.
+  // Hide the "no GPS data" overlay by default; shown below if needed
+  const mapMsgEl = document.getElementById('map-no-gps-msg');
+  if (mapMsgEl) mapMsgEl.hidden = true;
+
+  const hasTeeGreen = !!(hole.tee && hole.green);
+
+  // Compute the coordinate transform (only when both tee and green GPS known).
   holeTransform = computeHoleTransform(hole);
 
-  // Map centre: midpoint between tee and green (which is also the transform centre,
-  // so it stays at the same lat/lng after rotation).
-  // Fall back to GPS position for API courses that lack hole GPS data.
-  const center = hole.tee && hole.green
+  // Map centre: real midpoint (transform pivot = midpoint, so it maps to itself).
+  // For API courses with no hole GPS, fall back to user GPS position.
+  const center = hasTeeGreen
     ? [(hole.tee.lat + hole.green.lat) / 2, (hole.tee.lng + hole.green.lng) / 2]
     : hole.green
     ? [hole.green.lat, hole.green.lng]
     : state.gpsPosition
     ? [state.gpsPosition.lat, state.gpsPosition.lng]
-    : [36.5685, -121.9498]; // last-resort fallback
+    : [36.5685, -121.9498];
 
   leafletMap = L.map('hole-map-leaflet', {
     center,
@@ -752,22 +779,33 @@ function initHoleMap(hole) {
     maxZoom: 20,
   }).addTo(leafletMap);
 
-  // Fit the map to show only the current hole: use the transformed tee/green
-  // coordinates so the hole is vertical (tee south, green north) in the viewport.
-  if (holeTransform) {
+  if (hasTeeGreen) {
+    // Force zoom 18 centred on the hole midpoint.
+    // The coordinate transform aligns tee→green with north so the hole
+    // appears vertical: tee at bottom, green at top.
+    leafletMap.invalidateSize();
+    leafletMap.setView(center, 18);
+
+    // ── Debug markers: RED = tee, GREEN = green ──────────────
+    // Placed at their transformed (display) coordinates so we can verify
+    // the tee-at-bottom / green-at-top orientation is correct.
     const teeFwd   = holeTransform.fwd(hole.tee.lat,   hole.tee.lng);
     const greenFwd = holeTransform.fwd(hole.green.lat, hole.green.lng);
-    leafletMap.invalidateSize();
-    leafletMap.fitBounds(
-      [[teeFwd.lat, teeFwd.lng], [greenFwd.lat, greenFwd.lng]],
-      { padding: [60, 40], maxZoom: 18 }
-    );
-  } else if (hole.tee && hole.green) {
-    leafletMap.invalidateSize();
-    leafletMap.fitBounds(
-      [[hole.tee.lat, hole.tee.lng], [hole.green.lat, hole.green.lng]],
-      { padding: [60, 40], maxZoom: 18 }
-    );
+
+    L.circleMarker([teeFwd.lat,   teeFwd.lng],   {
+      radius: 10, color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.9, weight: 3,
+    }).addTo(leafletMap);
+    L.circleMarker([greenFwd.lat, greenFwd.lng], {
+      radius: 10, color: '#16a34a', fillColor: '#16a34a', fillOpacity: 0.9, weight: 3,
+    }).addTo(leafletMap);
+
+  } else {
+    // API course with no hole GPS — show message and centre on user GPS
+    if (mapMsgEl) mapMsgEl.hidden = false;
+    if (state.gpsPosition) {
+      leafletMap.invalidateSize();
+      leafletMap.setView([state.gpsPosition.lat, state.gpsPosition.lng], 17);
+    }
   }
 
   // Layer for shots — cleared and redrawn after each logged shot
@@ -1060,14 +1098,22 @@ function renderNav() {
 
 // ── Course screen ─────────────────────────────────────────────
 function renderCourseScreen() {
-  if (!state.gpsPosition) {
-    courseSearchFired   = false;
-    courseSearchResults = [];
-    courseApiLoading    = false;
-    courseSearchDone    = false;
-    const container = document.getElementById('course-list');
-    if (container) container.innerHTML = '';
+  // Always pre-populate nearbyResults with local courses so they show without GPS
+  if (nearbyResults.length === 0) {
+    nearbyResults = LOCAL_COURSES.map(c => ({ ...c, distanceYards: null, source: 'local' }));
   }
+
+  // Reset GPS search trigger when no fix yet
+  if (!state.gpsPosition) {
+    courseSearchFired = false;
+  }
+
+  // Ensure something is shown (local courses at minimum)
+  if (courseSearchResults.length === 0) {
+    courseSearchResults = [...nearbyResults];
+  }
+
+  renderCourseList();
 }
 
 // ── Hole View ─────────────────────────────────────────────────
