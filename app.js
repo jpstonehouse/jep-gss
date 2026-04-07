@@ -686,23 +686,28 @@ function initHoleMap(hole) {
     zoom: 17,
     zoomControl: false,
     attributionControl: false,
+    rotate: true,       // required by leaflet-rotate for setBearing to work
+    touchRotate: false, // disable two-finger rotation gesture
   });
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 20,
   }).addTo(leafletMap);
 
-  // Rotate: tee at bottom, green at top
+  // Rotate: tee at bottom, green at top.
+  // Must be set before fitBounds so the rotation is applied first.
   if (hole.tee && hole.green && leafletMap.setBearing) {
     const bearing = computeBearing(hole.tee.lat, hole.tee.lng, hole.green.lat, hole.green.lng);
     leafletMap.setBearing(bearing);
   }
 
-  // Fit bounds to show tee and green
+  // Fit bounds tightly to just the current hole (tee → green).
+  // invalidateSize() first so Leaflet knows the container's real pixel dimensions.
   if (hole.tee && hole.green) {
+    leafletMap.invalidateSize();
     leafletMap.fitBounds(
       [[hole.tee.lat, hole.tee.lng], [hole.green.lat, hole.green.lng]],
-      { padding: [50, 50] }
+      { padding: [60, 40], maxZoom: 18 }
     );
   }
 
@@ -1503,6 +1508,7 @@ function wireEvents() {
 
 function init() {
   loadPersistedState();
+  state.activeScreen = 'course'; // always open on course selection, not mid-round
   wireEvents();
   render();
 
