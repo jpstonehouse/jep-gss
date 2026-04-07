@@ -63,15 +63,15 @@ const LOCAL_COURSES = [
     totalHoles: 9,
     center: { lat: 34.608393, lng: -120.197016 },
     holes: [
-      { par: 3, yardage: 166, green: { lat: 34.608393, lng: -120.197016 } },
-      { par: 3, yardage: 104, green: { lat: 34.608374, lng: -120.196443 } },
-      { par: 3, yardage: 166, green: { lat: 34.608256, lng: -120.194289 } },
-      { par: 4, yardage: 214, green: { lat: 34.607687, lng: -120.196246 } },
-      { par: 3, yardage: 193, green: { lat: 34.607619, lng: -120.197217 } },
-      { par: 4, yardage: 257, green: { lat: 34.608580, lng: -120.199702 } },
-      { par: 3, yardage:  82, green: { lat: 34.609021, lng: -120.198605 } },
-      { par: 3, yardage: 145, green: { lat: 34.607812, lng: -120.197695 } },
-      { par: 3, yardage: 185, green: { lat: 34.609064, lng: -120.198347 } },
+      { par: 3, yardage: 166, tee: { lat: 34.609427, lng: -120.197999 }, green: { lat: 34.608393, lng: -120.197016 } },
+      { par: 3, yardage: 104, tee: { lat: 34.607893, lng: -120.197248 }, green: { lat: 34.608374, lng: -120.196443 } },
+      { par: 3, yardage: 166, tee: { lat: 34.608294, lng: -120.195853 }, green: { lat: 34.608256, lng: -120.194289 } },
+      { par: 4, yardage: 214, tee: { lat: 34.608013, lng: -120.194155 }, green: { lat: 34.607687, lng: -120.196246 } },
+      { par: 3, yardage: 193, tee: { lat: 34.608145, lng: -120.195653 }, green: { lat: 34.607619, lng: -120.197217 } },
+      { par: 4, yardage: 257, tee: { lat: 34.607520, lng: -120.197731 }, green: { lat: 34.608580, lng: -120.199702 } },
+      { par: 3, yardage:  82, tee: { lat: 34.608516, lng: -120.198881 }, green: { lat: 34.609021, lng: -120.198605 } },
+      { par: 3, yardage: 145, tee: { lat: 34.608754, lng: -120.198508 }, green: { lat: 34.607812, lng: -120.197695 } },
+      { par: 3, yardage: 185, tee: { lat: 34.607826, lng: -120.197340 }, green: { lat: 34.609064, lng: -120.198347 } },
     ],
   },
 ];
@@ -268,33 +268,23 @@ function mockShotPosition(hole, prevShots, club) {
 // COURSE SELECTION
 // =============================================================
 
-function startRoundFromCourse(course) {
+async function startRoundFromCourse(course) {
   let holes;
 
   if (course.holes && course.holes.length > 0) {
+    // Local built-in course — full GPS data already present
     holes = course.holes.map((h, i) => ({
       holeNumber: i + 1,
       par:        h.par,
       yardage:    h.yardage ?? null,
-      green:      h.green   ?? null,
+      tee:        h.tee   ?? null,
+      green:      h.green ?? null,
       shots:      [],
       complete:   false,
     }));
-  } else if (course.scorecard && course.scorecard.length > 0) {
-    holes = course.scorecard.map(h => {
-      const tees    = h.tees ?? {};
-      const teeKeys = Object.keys(tees);
-      const tee     = tees.teeBox3 ?? tees.teeBox2 ??
-                      (teeKeys.length ? tees[teeKeys[Math.floor(teeKeys.length / 2)]] : null);
-      return {
-        holeNumber: h.Hole,
-        par:        h.Par,
-        yardage:    tee?.yards ?? null,
-        green:      null,
-        shots:      [],
-        complete:   false,
-      };
-    });
+  } else if (course.source === 'api') {
+    // API course — fetch detail endpoint and parse GPS coordinates
+    holes = await fetchAndBuildApiHoles(course);
   } else {
     holes = initHoles(course.totalHoles || 18);
   }
@@ -306,6 +296,108 @@ function startRoundFromCourse(course) {
     currentHole:  1,
     mockMode:     false,
     activeScreen: 'hole-view',
+  });
+}
+
+/**
+ * Fetch the full course detail from the API and build a holes array with GPS.
+ * Logs the raw API response so we can inspect the exact data structure.
+ */
+async function fetchAndBuildApiHoles(course) {
+  // Try parsing GPS from the scorecard already embedded in the search result first
+  if (course.scorecard && course.scorecard.length > 0) {
+    console.log('[API Detail] Scorecard from search result (first hole):',
+      JSON.stringify(course.scorecard[0]));
+    const fromSearch = parseApiScorecard(course.scorecard);
+    const hasGPS = fromSearch.some(h => h.tee || h.green);
+    if (hasGPS) {
+      console.log('[API Detail] GPS found in search result scorecard');
+      return fromSearch;
+    }
+  }
+
+  // Try the detail endpoint using whatever ID field the API uses
+  const courseId = course.id ?? course._id ?? course.courseId ?? course.slug ?? null;
+  console.log('[API Detail] Course object keys:', Object.keys(course));
+  console.log('[API Detail] Resolved ID:', courseId);
+
+  if (courseId) {
+    try {
+      const url = `https://${RAPIDAPI.host}/course?id=${encodeURIComponent(courseId)}`;
+      console.log('[API Detail] Fetching:', url);
+
+      const res  = await fetch(url, {
+        headers: {
+          'X-RapidAPI-Key':  RAPIDAPI.key,
+          'X-RapidAPI-Host': RAPIDAPI.host,
+        },
+      });
+      const raw  = await res.text();
+      console.log('[API Detail] Status:', res.status);
+      console.log('[API Detail] Raw response:', raw.slice(0, 1000));
+
+      const data = JSON.parse(raw);
+      console.log('[API Detail] Parsed keys:', Object.keys(data));
+
+      const scorecard = data.scorecard ?? (Array.isArray(data) ? data : null);
+      if (scorecard && scorecard.length > 0) {
+        console.log('[API Detail] Scorecard first hole:', JSON.stringify(scorecard[0]));
+        return parseApiScorecard(scorecard);
+      }
+    } catch (err) {
+      console.warn('[API Detail] Fetch failed:', err.message);
+    }
+  }
+
+  // Fallback: use scorecard from search (pars + yardages, no GPS)
+  if (course.scorecard) return parseApiScorecard(course.scorecard);
+  return initHoles(course.totalHoles || 18);
+}
+
+/**
+ * Convert a raw API scorecard array into the internal holes format.
+ * Attempts to extract tee and green GPS from every plausible field name.
+ */
+function parseApiScorecard(scorecard) {
+  return scorecard.map(h => {
+    const tees    = h.tees ?? {};
+    const teeKeys = Object.keys(tees);
+
+    // Prefer teeBox3 (white tees) for yardage; fall back to middle tee
+    const bestTee = tees.teeBox3 ?? tees.teeBox2 ??
+                    (teeKeys.length ? tees[teeKeys[Math.floor(teeKeys.length / 2)]] : null);
+
+    // Try every tee box for GPS coordinates
+    let teeGPS = null;
+    for (const key of teeKeys) {
+      const tb = tees[key];
+      if (!tb) continue;
+      const lat = parseFloat(tb.lat ?? tb.latitude ?? tb.Lat ?? '');
+      const lng = parseFloat(tb.lng ?? tb.lon ?? tb.longitude ?? tb.Lng ?? '');
+      if (isFinite(lat) && isFinite(lng)) {
+        teeGPS = { lat, lng };
+        break;
+      }
+    }
+
+    // Try multiple field names for the green / hole location
+    const gSrc = h.green ?? h.hole ?? h.pin ?? h.holeLocation ?? null;
+    let greenGPS = null;
+    if (gSrc) {
+      const lat = parseFloat(gSrc.lat ?? gSrc.latitude ?? gSrc.Lat ?? '');
+      const lng = parseFloat(gSrc.lng ?? gSrc.lon ?? gSrc.longitude ?? gSrc.Lng ?? '');
+      if (isFinite(lat) && isFinite(lng)) greenGPS = { lat, lng };
+    }
+
+    return {
+      holeNumber: h.Hole ?? h.hole ?? h.holeNumber ?? h.number,
+      par:        h.Par  ?? h.par,
+      yardage:    bestTee?.yards ?? h.yards ?? null,
+      tee:        teeGPS,
+      green:      greenGPS,
+      shots:      [],
+      complete:   false,
+    };
   });
 }
 
@@ -354,10 +446,16 @@ async function searchCoursesByName(query) {
 
     const list = Array.isArray(data) ? data : [];
     console.log('[Courses] Results:', list.length);
+    if (list.length > 0) {
+      console.log('[Courses] First result keys:', Object.keys(list[0]));
+      console.log('[Courses] First result sample:', JSON.stringify(list[0]).slice(0, 800));
+    }
 
     const apiResults = list.map(c => {
       const scorecard = Array.isArray(c.scorecard) ? c.scorecard : null;
       return {
+        // Capture every plausible ID field for the detail endpoint fetch
+        id:            c.id ?? c._id ?? c.courseId ?? c.slug ?? null,
         name:          c.name,
         totalHoles:    parseInt(c.holes) || 18,
         city:          c.city  ?? null,
@@ -1498,11 +1596,11 @@ function wireEvents() {
   });
 
   // ── Course list: select course ───────────────────────────────
-  document.getElementById('course-list').addEventListener('click', (e) => {
+  document.getElementById('course-list').addEventListener('click', async (e) => {
     const card = e.target.closest('[data-course-idx]');
     if (!card) return;
     const course = courseSearchResults[parseInt(card.dataset.courseIdx, 10)];
-    if (course) startRoundFromCourse(course);
+    if (course) await startRoundFromCourse(course);
   });
 
   // ── Course name search ───────────────────────────────────────
