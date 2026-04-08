@@ -605,6 +605,7 @@ function initHoles(totalHoles) {
       par:        DEFAULT_PARS[i] ?? 4,
       shots:      [],
       complete:   false,
+      onGreen:    false,
     });
   }
   return holes;
@@ -627,6 +628,7 @@ function addShot(club, rating, lat, lng, svgXPct = null, svgYPct = null) {
     club,
     rating,
     ratingVal: JEP_RATINGS[rating] ?? 0,
+    isPutt:    club === 'P',
     lat:       lat    ?? null,
     lng:       lng    ?? null,
     svgXPct:   svgXPct ?? null,
@@ -983,13 +985,20 @@ function drawShotsSVG(hole) {
   });
 
   // ── Connecting lines (drawn first, below dots) ────────────────
-  for (let i = 1; i < shots.length; i++) {
-    const a = pos[i - 1], b = pos[i];
+  // Prepend the tee box centre so the first line runs tee → shot 1.
+  // Tee box: x=115 w=90 → cx=160; y=svgH-70 h=45 → cy=svgH-48.
+  const teeCenter = { x: SVG_W / 2, y: svgH - 48 };
+  const linePos   = [teeCenter, ...pos];
+
+  for (let i = 1; i < linePos.length; i++) {
+    const a    = linePos[i - 1];
+    const b    = linePos[i];
+    const shot = shots[i - 1];   // shots[0] aligns with linePos[1]
     const line = document.createElementNS(ns, 'line');
     line.setAttribute('x1', String(a.x)); line.setAttribute('y1', String(a.y));
     line.setAttribute('x2', String(b.x)); line.setAttribute('y2', String(b.y));
-    const isPutt = shots[i - 1].club === 'P';
-    const isPen  = isPenaltyShot(shots[i - 1]);
+    const isPutt = shot.club === 'P';
+    const isPen  = isPenaltyShot(shot);
     line.setAttribute('stroke', isPen ? '#c4b5fd' : isPutt ? '#7dd3fc' : 'rgba(255,255,255,0.8)');
     line.setAttribute('stroke-width', isPutt ? '2.5' : '2');
     if (isPen) line.setAttribute('stroke-dasharray', '5 4');
@@ -1176,9 +1185,13 @@ function updateHoleDrawer() {
   const undoBtn = document.getElementById('drawer-undo-btn');
   if (undoBtn) undoBtn.disabled = hole.shots.length === 0;
 
-  // "In the Hole!" button: show once at least one shot logged
+  // "On the Green" button: show after first shot, until onGreen is set
+  const onGreenBtn = document.getElementById('on-green-btn');
+  if (onGreenBtn) onGreenBtn.hidden = hole.shots.length === 0 || !!hole.onGreen;
+
+  // "In the Hole!" button: only after onGreen flag set AND at least one putt logged
   const inHoleBtn = document.getElementById('in-hole-btn');
-  if (inHoleBtn) inHoleBtn.hidden = hole.shots.length === 0;
+  if (inHoleBtn) inHoleBtn.hidden = !hole.onGreen || !hole.shots.some(s => s.isPutt);
 }
 
 function expandDrawer() {
@@ -1544,6 +1557,15 @@ function endRound() {
   }
 }
 
+/** Mark the current hole as reached the green. Enables putt logging and In the Hole! */
+function setOnGreen() {
+  const hole = currentHoleData();
+  if (!hole) return;
+  hole.onGreen = true;
+  persist();
+  updateHoleDrawer();
+}
+
 /**
  * Mark the current hole complete and advance to the next.
  * Called by the "In the Hole!" button.
@@ -1782,7 +1804,8 @@ function wireEvents() {
     navigateTo('history');
   });
 
-  // ── "In the Hole!" ───────────────────────────────────────────
+  // ── "On the Green" / "In the Hole!" ─────────────────────────
+  document.getElementById('on-green-btn').addEventListener('click', setOnGreen);
   document.getElementById('in-hole-btn').addEventListener('click', completeHole);
 
   // ── API debug overlay: close ─────────────────────────────────
