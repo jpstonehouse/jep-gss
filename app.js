@@ -856,34 +856,37 @@ function initHoleSVG(hole) {
   const bearHide  = hole.shots.length > 0 ? ' display="none"' : '';
 
   wrap.innerHTML = `
-    <svg id="hole-svg" viewBox="0 0 ${SVG_W} ${svgH}" width="100%"
-         style="display:block;touch-action:manipulation;">
-      <!-- fairway background -->
-      <rect width="${SVG_W}" height="${svgH}" fill="#1e5c38"/>
-      <!-- fairway strip -->
-      <rect x="110" y="72" width="100" height="${svgH - 152}" fill="#2a7a4a" rx="45"/>
-      <!-- green (white ellipse, top) -->
-      <ellipse cx="160" cy="52" rx="65" ry="40" fill="white" opacity="0.92"/>
-      <!-- hole cup -->
-      <circle cx="160" cy="52" r="5" fill="#444"/>
-      <!-- tee box (white rect, bottom) -->
-      <rect x="115" y="${teeY}" width="90" height="45" fill="white" opacity="0.92" rx="5"/>
-      <text x="160" y="${teeY + 28}" text-anchor="middle" font-size="13" fill="#444" font-weight="bold">TEE</text>
-      ${noGpsMsg}
-      <!-- shot paths -->
-      <g id="svg-lines"></g>
-      <!-- shot dots -->
-      <g id="svg-dots"></g>
-      <!-- pending tap indicator -->
-      <circle id="svg-temp" cx="-200" cy="-200" r="12"
-              fill="rgba(255,255,255,0.25)" stroke="white" stroke-width="2.5"
-              stroke-dasharray="5 3" pointer-events="none"/>
-      <!-- Pants Bear on the tee box — tap to dismiss and start plotting -->
-      <image id="svg-bear" href="golf-golfing.gif"
-             x="125" y="${teeY - 30}" width="70" height="70"
-             preserveAspectRatio="xMidYMid meet"
-             style="cursor:pointer;"${bearHide}/>
-    </svg>`;
+    <div id="hole-svg-container" style="position:relative;width:100%;">
+      <svg id="hole-svg" viewBox="0 0 ${SVG_W} ${svgH}" width="100%"
+           style="display:block;touch-action:manipulation;">
+        <!-- fairway background -->
+        <rect width="${SVG_W}" height="${svgH}" fill="#1e5c38"/>
+        <!-- fairway strip -->
+        <rect x="110" y="72" width="100" height="${svgH - 152}" fill="#2a7a4a" rx="45"/>
+        <!-- green (white ellipse, top) -->
+        <ellipse cx="160" cy="52" rx="65" ry="40" fill="white" opacity="0.92"/>
+        <!-- hole cup -->
+        <circle cx="160" cy="52" r="5" fill="#444"/>
+        <!-- tee box (white rect, bottom) -->
+        <rect x="115" y="${teeY}" width="90" height="45" fill="white" opacity="0.92" rx="5"/>
+        <text x="160" y="${teeY + 28}" text-anchor="middle" font-size="13" fill="#444" font-weight="bold">TEE</text>
+        ${noGpsMsg}
+        <!-- shot path lines (scale with SVG) -->
+        <g id="svg-lines"></g>
+        <!-- pending tap indicator -->
+        <circle id="svg-temp" cx="-200" cy="-200" r="12"
+                fill="rgba(255,255,255,0.25)" stroke="white" stroke-width="2.5"
+                stroke-dasharray="5 3" pointer-events="none"/>
+        <!-- Pants Bear on the tee box — tap to dismiss and start plotting -->
+        <image id="svg-bear" href="golf-golfing.gif"
+               x="125" y="${teeY - 30}" width="70" height="70"
+               preserveAspectRatio="xMidYMid meet"
+               style="cursor:pointer;"${bearHide}/>
+      </svg>
+      <!-- Shot dots as HTML elements — fixed screen size regardless of SVG scale -->
+      <div id="shot-dot-overlay"
+           style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;"></div>
+    </div>`;
 
   document.getElementById('hole-svg').addEventListener('click', handleSVGTap);
 
@@ -950,15 +953,16 @@ function removeTempDot() {
 }
 
 /**
- * Redraw all shot dots and connecting lines on the SVG.
- * GPS shots are projected via svgProjection; no-GPS shots use stored svgXPct/svgYPct.
+ * Redraw all shot dots and connecting lines.
+ * Lines stay in SVG (scale with view).
+ * Dots are HTML elements in an overlay — fixed ~20px screen size regardless of SVG scale.
  */
 function drawShotsSVG(hole) {
-  const linesG = document.getElementById('svg-lines');
-  const dotsG  = document.getElementById('svg-dots');
-  if (!linesG || !dotsG) return;
-  linesG.innerHTML = '';
-  dotsG.innerHTML  = '';
+  const linesG  = document.getElementById('svg-lines');
+  const overlay = document.getElementById('shot-dot-overlay');
+  if (!linesG || !overlay) return;
+  linesG.innerHTML   = '';
+  overlay.innerHTML  = '';
 
   const shots = hole.shots;
 
@@ -973,7 +977,7 @@ function drawShotsSVG(hole) {
   const svgH = getSvgHeight(hole);
   const ns   = 'http://www.w3.org/2000/svg';
 
-  // Resolve display position for each shot
+  // Resolve SVG-space position for each shot
   const pos = shots.map(s => {
     if (s.lat != null && svgProjection) {
       return gpsToSvgCoord(s.lat, s.lng, hole, svgH, svgProjection);
@@ -984,16 +988,15 @@ function drawShotsSVG(hole) {
     return { x: SVG_W / 2, y: svgH / 2 };
   });
 
-  // ── Connecting lines (drawn first, below dots) ────────────────
-  // Prepend the tee box centre so the first line runs tee → shot 1.
-  // Tee box: x=115 w=90 → cx=160; y=svgH-70 h=45 → cy=svgH-48.
+  // ── Connecting lines (SVG, scale with view) ───────────────────
+  // Prepend tee box centre so the first line runs tee → shot 1.
   const teeCenter = { x: SVG_W / 2, y: svgH - 48 };
   const linePos   = [teeCenter, ...pos];
 
   for (let i = 1; i < linePos.length; i++) {
     const a    = linePos[i - 1];
     const b    = linePos[i];
-    const shot = shots[i - 1];   // shots[0] aligns with linePos[1]
+    const shot = shots[i - 1];
     const line = document.createElementNS(ns, 'line');
     line.setAttribute('x1', String(a.x)); line.setAttribute('y1', String(a.y));
     line.setAttribute('x2', String(b.x)); line.setAttribute('y2', String(b.y));
@@ -1005,48 +1008,34 @@ function drawShotsSVG(hole) {
     linesG.appendChild(line);
   }
 
-  // ── Shot dots ─────────────────────────────────────────────────
+  // ── Shot dots (HTML overlay, fixed screen size) ───────────────
   shots.forEach((shot, i) => {
     const p   = pos[i];
     const clr = SHOT_COLORS[shot.rating] ?? { bg: '#f3f4f6', border: '#9ca3af', text: '#4b5563' };
-    const r   = shot.club === 'P' ? 12 : 14;
 
-    const g = document.createElementNS(ns, 'g');
+    // Convert SVG viewBox coords to percentages of the rendered SVG area
+    const xPct = (p.x / SVG_W) * 100;
+    const yPct = (p.y / svgH)  * 100;
 
-    const circle = document.createElementNS(ns, 'circle');
-    circle.setAttribute('cx', String(p.x));
-    circle.setAttribute('cy', String(p.y));
-    circle.setAttribute('r',  String(r));
-    circle.setAttribute('fill',         clr.bg);
-    circle.setAttribute('stroke',       clr.border);
-    circle.setAttribute('stroke-width', '1.5');
-    if (isPenaltyShot(shot)) circle.setAttribute('stroke-dasharray', '4 2');
-    g.appendChild(circle);
+    const dot = document.createElement('div');
+    dot.className         = 'shot-dot-html';
+    dot.style.left        = xPct + '%';
+    dot.style.top         = yPct + '%';
+    dot.style.background  = clr.bg;
+    dot.style.borderColor = clr.border;
+    dot.style.color       = clr.text;
+    if (isPenaltyShot(shot)) dot.style.borderStyle = 'dashed';
 
-    const ratingTxt = document.createElementNS(ns, 'text');
-    ratingTxt.setAttribute('x',                  String(p.x));
-    ratingTxt.setAttribute('y',                  String(p.y));
-    ratingTxt.setAttribute('text-anchor',         'middle');
-    ratingTxt.setAttribute('dominant-baseline',   'central');
-    ratingTxt.setAttribute('font-size',           shot.rating.length > 1 ? '7' : '9');
-    ratingTxt.setAttribute('font-weight',         'bold');
-    ratingTxt.setAttribute('fill',                clr.text);
-    ratingTxt.textContent = shot.rating;
-    g.appendChild(ratingTxt);
+    const ratingSpan = document.createElement('span');
+    ratingSpan.textContent = shot.rating;
+    dot.appendChild(ratingSpan);
 
-    // Shot-number badge (top-right of dot)
-    const badge = document.createElementNS(ns, 'text');
-    badge.setAttribute('x',                String(p.x + r));
-    badge.setAttribute('y',                String(p.y - r));
-    badge.setAttribute('text-anchor',      'middle');
-    badge.setAttribute('dominant-baseline','central');
-    badge.setAttribute('font-size',        '7');
-    badge.setAttribute('font-weight',      'bold');
-    badge.setAttribute('fill',             'white');
+    const badge = document.createElement('span');
+    badge.className   = 'shot-dot-html__badge';
     badge.textContent = String(i + 1);
-    g.appendChild(badge);
+    dot.appendChild(badge);
 
-    dotsG.appendChild(g);
+    overlay.appendChild(dot);
   });
 }
 
@@ -1078,10 +1067,11 @@ function confirmYes() {
 
 function showShotPicker(shotNum) {
   document.getElementById('picker-num').textContent = shotNum;
+  document.getElementById('picker-title').textContent = `Shot ${shotNum} — Select Club`;
 
-  // Always start at club selection
-  document.getElementById('picker-clubs').hidden   = false;
-  document.getElementById('picker-ratings').hidden = true;
+  // Use style.display so CSS display:grid can't override the hidden state
+  document.getElementById('picker-clubs').style.display   = '';     // show (CSS default)
+  document.getElementById('picker-ratings').style.display = 'none'; // force hide
   pickerClub = null;
 
   document.getElementById('shot-picker').hidden = false;
@@ -1111,10 +1101,11 @@ function pickerSelectClub(club) {
     PW: 'Pitching Wedge', SW: 'Sand Wedge', LW: 'Lob Wedge', P: 'Putter',
   };
 
-  document.getElementById('picker-rate-label').textContent =
-    `${CLUB_NAMES[club] ?? club} — Rate the shot`;
-  document.getElementById('picker-clubs').hidden   = true;
-  document.getElementById('picker-ratings').hidden = false;
+  const label = CLUB_NAMES[club] ?? club;
+  document.getElementById('picker-title').textContent       = `Rate the ${label}`;
+  document.getElementById('picker-rate-label').textContent  = `${label} — Rate the shot`;
+  document.getElementById('picker-clubs').style.display     = 'none'; // force hide
+  document.getElementById('picker-ratings').style.display   = '';     // show (CSS default)
 }
 
 /**
