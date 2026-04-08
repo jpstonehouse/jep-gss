@@ -232,6 +232,13 @@ html, body {
   text-overflow: ellipsis;
 }
 
+/* ── PANTS BEAR (SVG image blend) ────────────────────────── */
+/* multiply: white/light background × dark green = dark green  */
+/* effectively removes the gif's solid background colour.      */
+.svg-bear-img {
+  mix-blend-mode: multiply;
+}
+
 /* ── SVG HOLE RENDERER CONTAINER ─────────────────────────── */
 .hole-svg-wrap {
   flex: 1;

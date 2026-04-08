@@ -881,6 +881,7 @@ function initHoleSVG(hole) {
         <image id="svg-bear" href="golf-golfing.gif"
                x="125" y="${teeY - 30}" width="70" height="70"
                preserveAspectRatio="xMidYMid meet"
+               class="svg-bear-img"
                style="cursor:pointer;"${bearHide}/>
       </svg>
       <!-- Shot dots as HTML elements — fixed screen size regardless of SVG scale -->
@@ -1069,9 +1070,10 @@ function showShotPicker(shotNum) {
   document.getElementById('picker-num').textContent = shotNum;
   document.getElementById('picker-title').textContent = `Shot ${shotNum} — Select Club`;
 
-  // Use style.display so CSS display:grid can't override the hidden state
-  document.getElementById('picker-clubs').style.display   = '';     // show (CSS default)
-  document.getElementById('picker-ratings').style.display = 'none'; // force hide
+  // Use explicit style.display values — the [hidden] attribute on picker-ratings
+  // means style.display='' would restore the UA [hidden]{display:none} rule.
+  document.getElementById('picker-clubs').style.display   = 'grid';  // matches .shot-picker__clubs CSS
+  document.getElementById('picker-ratings').style.display = 'none';  // force hide
   pickerClub = null;
 
   document.getElementById('shot-picker').hidden = false;
@@ -1104,8 +1106,8 @@ function pickerSelectClub(club) {
   const label = CLUB_NAMES[club] ?? club;
   document.getElementById('picker-title').textContent       = `Rate the ${label}`;
   document.getElementById('picker-rate-label').textContent  = `${label} — Rate the shot`;
-  document.getElementById('picker-clubs').style.display     = 'none'; // force hide
-  document.getElementById('picker-ratings').style.display   = '';     // show (CSS default)
+  document.getElementById('picker-clubs').style.display     = 'none';  // force hide
+  document.getElementById('picker-ratings').style.display   = 'block'; // explicit show — '' would restore [hidden] UA rule
 }
 
 /**
