@@ -765,9 +765,10 @@ const PX_PER_YARD = 3;     // vertical scale: 3 SVG units per yard
 let pendingLL     = null;  // { lat, lng } real GPS of pending tap (null for no-GPS courses)
 let pendingSvgPt  = null;  // { x, y } SVG-space coords of pending tap
 let pickerClub    = null;
-let drawerExpanded = false;
-let svgInitHole   = null;  // holeNumber the SVG is currently drawn for
-let svgProjection = null;  // GPS↔SVG projection for the current hole
+let drawerExpanded    = false;
+let svgInitHole       = null;  // holeNumber the SVG is currently drawn for
+let svgProjection     = null;  // GPS↔SVG projection for the current hole
+let svgResizeHandler  = null;  // resize listener for re-drawing fixed-position dots
 
 // Dot color scheme per JEP rating (also used by the drawer shot-chip list)
 const SHOT_COLORS = {
@@ -881,7 +882,6 @@ function initHoleSVG(hole) {
         <image id="svg-bear" href="golf-golfing.gif"
                x="125" y="${teeY - 30}" width="70" height="70"
                preserveAspectRatio="xMidYMid meet"
-               class="svg-bear-img"
                style="cursor:pointer;"${bearHide}/>
       </svg>
       <!-- Shot dots as HTML elements — fixed screen size regardless of SVG scale -->
@@ -900,10 +900,19 @@ function initHoleSVG(hole) {
     });
   }
 
+  // Re-draw fixed-position dots whenever the layout changes (resize, orientation)
+  if (svgResizeHandler) window.removeEventListener('resize', svgResizeHandler);
+  svgResizeHandler = () => { const h = currentHoleData(); if (h) drawShotsSVG(h); };
+  window.addEventListener('resize', svgResizeHandler);
+
   drawShotsSVG(hole);
 }
 
 function destroyHoleSVG() {
+  if (svgResizeHandler) {
+    window.removeEventListener('resize', svgResizeHandler);
+    svgResizeHandler = null;
+  }
   const wrap = document.getElementById('hole-svg-wrap');
   if (wrap) wrap.innerHTML = '';
   svgInitHole   = null;
@@ -1009,19 +1018,31 @@ function drawShotsSVG(hole) {
     linesG.appendChild(line);
   }
 
-  // ── Shot dots (HTML overlay, fixed screen size) ───────────────
+  // ── Shot dots (fixed-position, won't scale with SVG zoom) ────
+  // Use getBoundingClientRect to map SVG viewBox coords → viewport pixels.
+  const svgEl  = document.getElementById('hole-svg');
+  const svgRect = svgEl ? svgEl.getBoundingClientRect() : null;
+
   shots.forEach((shot, i) => {
     const p   = pos[i];
     const clr = SHOT_COLORS[shot.rating] ?? { bg: '#f3f4f6', border: '#9ca3af', text: '#4b5563' };
 
-    // Convert SVG viewBox coords to percentages of the rendered SVG area
-    const xPct = (p.x / SVG_W) * 100;
-    const yPct = (p.y / svgH)  * 100;
-
     const dot = document.createElement('div');
-    dot.className         = 'shot-dot-html';
-    dot.style.left        = xPct + '%';
-    dot.style.top         = yPct + '%';
+    dot.className = 'shot-dot-html';
+
+    if (svgRect) {
+      // Map SVG-space coords to CSS viewport pixels, then pin with position:fixed
+      const screenX = svgRect.left + (p.x / SVG_W) * svgRect.width;
+      const screenY = svgRect.top  + (p.y / svgH)  * svgRect.height;
+      dot.style.position = 'fixed';
+      dot.style.left     = screenX + 'px';
+      dot.style.top      = screenY + 'px';
+    } else {
+      // Fallback: percentage over overlay
+      dot.style.left = (p.x / SVG_W) * 100 + '%';
+      dot.style.top  = (p.y / svgH)  * 100 + '%';
+    }
+
     dot.style.background  = clr.bg;
     dot.style.borderColor = clr.border;
     dot.style.color       = clr.text;
@@ -1106,8 +1127,10 @@ function pickerSelectClub(club) {
   const label = CLUB_NAMES[club] ?? club;
   document.getElementById('picker-title').textContent       = `Rate the ${label}`;
   document.getElementById('picker-rate-label').textContent  = `${label} — Rate the shot`;
-  document.getElementById('picker-clubs').style.display     = 'none';  // force hide
-  document.getElementById('picker-ratings').style.display   = 'block'; // explicit show — '' would restore [hidden] UA rule
+  document.getElementById('picker-clubs').style.display     = 'none';   // force hide
+  const ratingsEl = document.getElementById('picker-ratings');
+  ratingsEl.hidden       = false;   // remove [hidden] attr — some browsers block pointer events on [hidden] even with display:block
+  ratingsEl.style.display = 'block'; // explicit show
 }
 
 /**
@@ -1178,9 +1201,9 @@ function updateHoleDrawer() {
   const undoBtn = document.getElementById('drawer-undo-btn');
   if (undoBtn) undoBtn.disabled = hole.shots.length === 0;
 
-  // "On the Green" button: show after first shot, until onGreen is set
+  // "On the Green" button (in drawer): show any time onGreen is not yet set
   const onGreenBtn = document.getElementById('on-green-btn');
-  if (onGreenBtn) onGreenBtn.hidden = hole.shots.length === 0 || !!hole.onGreen;
+  if (onGreenBtn) onGreenBtn.hidden = !!hole.onGreen;
 
   // "In the Hole!" button: only after onGreen flag set AND at least one putt logged
   const inHoleBtn = document.getElementById('in-hole-btn');
