@@ -850,6 +850,8 @@ function initHoleSVG(hole) {
   const noGpsMsg  = hasTeeGreen ? '' :
     `<text x="160" y="${(svgH / 2).toFixed(0)}" text-anchor="middle"
            font-size="14" fill="rgba(255,255,255,0.7)">Tap to plot shots</text>`;
+  // Bear sits on the tee box; hide it if shots already exist (e.g. returning to hole)
+  const bearHide  = hole.shots.length > 0 ? ' display="none"' : '';
 
   wrap.innerHTML = `
     <svg id="hole-svg" viewBox="0 0 ${SVG_W} ${svgH}" width="100%"
@@ -874,9 +876,24 @@ function initHoleSVG(hole) {
       <circle id="svg-temp" cx="-200" cy="-200" r="12"
               fill="rgba(255,255,255,0.25)" stroke="white" stroke-width="2.5"
               stroke-dasharray="5 3" pointer-events="none"/>
+      <!-- Pants Bear on the tee box — tap to dismiss and start plotting -->
+      <image id="svg-bear" href="golf-golfing.gif"
+             x="125" y="${teeY - 30}" width="70" height="70"
+             preserveAspectRatio="xMidYMid meet"
+             style="cursor:pointer;"${bearHide}/>
     </svg>`;
 
   document.getElementById('hole-svg').addEventListener('click', handleSVGTap);
+
+  // Bear tap: dismiss the bear (shot plotting already works at any time)
+  const bearEl = document.getElementById('svg-bear');
+  if (bearEl) {
+    bearEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      bearEl.setAttribute('display', 'none');
+    });
+  }
+
   drawShotsSVG(hole);
 }
 
@@ -942,6 +959,13 @@ function drawShotsSVG(hole) {
   dotsG.innerHTML  = '';
 
   const shots = hole.shots;
+
+  // Hide the bear once any shot is logged
+  if (shots.length > 0) {
+    const bearEl = document.getElementById('svg-bear');
+    if (bearEl) bearEl.setAttribute('display', 'none');
+  }
+
   if (shots.length === 0) return;
 
   const svgH = getSvgHeight(hole);
@@ -1151,6 +1175,10 @@ function updateHoleDrawer() {
   // Undo button state
   const undoBtn = document.getElementById('drawer-undo-btn');
   if (undoBtn) undoBtn.disabled = hole.shots.length === 0;
+
+  // "In the Hole!" button: show once at least one shot logged
+  const inHoleBtn = document.getElementById('in-hole-btn');
+  if (inHoleBtn) inHoleBtn.hidden = hole.shots.length === 0;
 }
 
 function expandDrawer() {
@@ -1516,6 +1544,24 @@ function endRound() {
   }
 }
 
+/**
+ * Mark the current hole complete and advance to the next.
+ * Called by the "In the Hole!" button.
+ */
+function completeHole() {
+  const hole = currentHoleData();
+  if (!hole) return;
+  const strokes = calcStrokes(hole);
+  if (!confirm(`Hole ${hole.holeNumber} complete? (${strokes} stroke${strokes !== 1 ? 's' : ''})`)) return;
+  hole.complete = true;
+  persist();
+  if (state.currentHole < state.totalHoles) {
+    setState({ currentHole: state.currentHole + 1 });
+  } else {
+    endRound();
+  }
+}
+
 function archiveRound() {
   try {
     const history = JSON.parse(localStorage.getItem('jep-gss-history') ?? '[]');
@@ -1735,6 +1781,9 @@ function wireEvents() {
   document.getElementById('review-back-btn').addEventListener('click', () => {
     navigateTo('history');
   });
+
+  // ── "In the Hole!" ───────────────────────────────────────────
+  document.getElementById('in-hole-btn').addEventListener('click', completeHole);
 
   // ── API debug overlay: close ─────────────────────────────────
   document.getElementById('api-debug-close').addEventListener('click', () => {

@@ -539,6 +539,32 @@ html, body {
 .rating-chip--bad2    { background: var(--color-bad2); }
 .rating-chip--penalty { background: var(--color-penalty); }
 
+/* ── "IN THE HOLE!" FLOATING BUTTON ──────────────────────── */
+.in-hole-btn {
+  position: absolute;
+  bottom: 52px;       /* sits just above the collapsed drawer bar */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 250;
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 24px;
+  padding: 13px 30px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.30);
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.in-hole-btn:active {
+  background: #15803d;
+  transform: translateX(-50%) scale(0.96);
+}
+
 /* ── END ROUND BUTTON ─────────────────────────────────────── */
 .btn--end-round {
   background: none;
