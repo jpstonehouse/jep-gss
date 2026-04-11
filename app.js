@@ -1066,8 +1066,13 @@ function drawShotsSVG(hole) {
 // =============================================================
 
 function showShotConfirm(shotNum) {
+  console.log('[SHOT FLOW] showShotConfirm() called with shotNum:', shotNum);
+  console.log('[SHOT FLOW] showShotConfirm — pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt);
+  const confirmEl = document.getElementById('shot-confirm');
+  console.log('[SHOT FLOW] showShotConfirm BEFORE — hidden:', confirmEl.hidden, '| display:', window.getComputedStyle(confirmEl).display);
   document.getElementById('confirm-num').textContent = shotNum;
-  document.getElementById('shot-confirm').hidden = false;
+  confirmEl.hidden = false;
+  console.log('[SHOT FLOW] showShotConfirm AFTER — hidden:', confirmEl.hidden, '| display:', window.getComputedStyle(confirmEl).display);
 }
 
 function hideShotConfirm() {
@@ -1081,28 +1086,49 @@ function cancelConfirm() {
 }
 
 function confirmYes() {
+  console.log('[SHOT FLOW] confirmYes() called');
+  console.log('[SHOT FLOW] confirmYes — pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt, '| pickerClub:', pickerClub);
+  const confirmEl = document.getElementById('shot-confirm');
+  console.log('[SHOT FLOW] confirmYes — shot-confirm hidden:', confirmEl.hidden, '| display:', window.getComputedStyle(confirmEl).display);
   hideShotConfirm();
+  console.log('[SHOT FLOW] confirmYes — shot-confirm after hide — hidden:', confirmEl.hidden, '| display:', window.getComputedStyle(confirmEl).display);
   const hole    = currentHoleData();
   const shotNum = (hole?.shots.length ?? 0) + 1;
+  console.log('[SHOT FLOW] confirmYes — hole:', hole?.holeNumber, '| existing shots:', hole?.shots.length, '| shotNum:', shotNum);
   showShotPicker(shotNum);
 }
 
 function showShotPicker(shotNum) {
+  console.log('[SHOT FLOW] showShotPicker() called with shotNum:', shotNum);
+  console.log('[SHOT FLOW] showShotPicker — pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt);
+  const pickerEl   = document.getElementById('shot-picker');
+  const clubsEl    = document.getElementById('picker-clubs');
+  const ratingsEl  = document.getElementById('picker-ratings');
+  console.log('[SHOT FLOW] showShotPicker BEFORE — shot-picker hidden:', pickerEl.hidden, '| display:', window.getComputedStyle(pickerEl).display);
+  console.log('[SHOT FLOW] showShotPicker BEFORE — picker-clubs display:', window.getComputedStyle(clubsEl).display, '| pointer-events:', window.getComputedStyle(clubsEl).pointerEvents);
+  console.log('[SHOT FLOW] showShotPicker BEFORE — picker-ratings hidden:', ratingsEl.hidden, '| display:', window.getComputedStyle(ratingsEl).display);
+
   document.getElementById('picker-num').textContent = shotNum;
   document.getElementById('picker-title').textContent = `Shot ${shotNum} — Select Club`;
 
   // Use explicit style.display values — the [hidden] attribute on picker-ratings
   // means style.display='' would restore the UA [hidden]{display:none} rule.
-  document.getElementById('picker-clubs').style.display   = 'grid';  // matches .shot-picker__clubs CSS
-  document.getElementById('picker-ratings').style.display = 'none';  // force hide
+  clubsEl.style.display   = 'grid';  // matches .shot-picker__clubs CSS
+  ratingsEl.style.display = 'none';  // force hide
   pickerClub = null;
 
-  document.getElementById('shot-picker').hidden = false;
+  pickerEl.hidden = false;
+  console.log('[SHOT FLOW] showShotPicker AFTER — shot-picker hidden:', pickerEl.hidden, '| display:', window.getComputedStyle(pickerEl).display);
+  console.log('[SHOT FLOW] showShotPicker AFTER — picker-clubs display:', window.getComputedStyle(clubsEl).display, '| pointer-events:', window.getComputedStyle(clubsEl).pointerEvents);
+  console.log('[SHOT FLOW] showShotPicker AFTER — picker-ratings hidden:', ratingsEl.hidden, '| display:', window.getComputedStyle(ratingsEl).display);
 }
 
 function hideShotPicker() {
-  document.getElementById('shot-picker').hidden = true;
+  const pickerEl = document.getElementById('shot-picker');
+  console.log('[SHOT FLOW] hideShotPicker() called — shot-picker hidden BEFORE:', pickerEl.hidden, '| picker-ratings hidden:', document.getElementById('picker-ratings').hidden);
+  pickerEl.hidden = true;
   pickerClub = null;
+  console.log('[SHOT FLOW] hideShotPicker() done — shot-picker hidden AFTER:', pickerEl.hidden, '| picker-ratings hidden:', document.getElementById('picker-ratings').hidden, '| picker-ratings display:', document.getElementById('picker-ratings').style.display);
 }
 
 function cancelPicker() {
@@ -1115,6 +1141,8 @@ function cancelPicker() {
  * A club was tapped in the picker — show the rating grid.
  */
 function pickerSelectClub(club) {
+  console.log('[SHOT FLOW] pickerSelectClub() called with club:', club);
+  console.log('[SHOT FLOW] pickerSelectClub — pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt, '| previous pickerClub:', pickerClub);
   pickerClub = club;
 
   const CLUB_NAMES = {
@@ -1131,14 +1159,20 @@ function pickerSelectClub(club) {
   const ratingsEl = document.getElementById('picker-ratings');
   ratingsEl.hidden       = false;   // remove [hidden] attr — some browsers block pointer events on [hidden] even with display:block
   ratingsEl.style.display = 'block'; // explicit show
+  console.log('[SHOT FLOW] pickerSelectClub AFTER — picker-clubs display:', window.getComputedStyle(document.getElementById('picker-clubs')).display);
+  console.log('[SHOT FLOW] pickerSelectClub AFTER — picker-ratings hidden:', ratingsEl.hidden, '| display:', window.getComputedStyle(ratingsEl).display, '| pointer-events:', window.getComputedStyle(ratingsEl).pointerEvents);
 }
 
 /**
  * A rating was tapped — log the shot and close the picker.
  */
 function logShotFromPicker(rating) {
-  if (!pickerClub) return;
-  if (!pendingLL && !pendingSvgPt) return;
+  console.log('[SHOT FLOW] logShotFromPicker() called with rating:', rating);
+  console.log('[SHOT FLOW] logShotFromPicker — pickerClub:', pickerClub, '| pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt);
+  const pickerEl = document.getElementById('shot-picker');
+  console.log('[SHOT FLOW] logShotFromPicker — shot-picker hidden:', pickerEl.hidden, '| display:', window.getComputedStyle(pickerEl).display);
+  if (!pickerClub) { console.warn('[SHOT FLOW] logShotFromPicker — EARLY RETURN: pickerClub is null'); return; }
+  if (!pendingLL && !pendingSvgPt) { console.warn('[SHOT FLOW] logShotFromPicker — EARLY RETURN: both pendingLL and pendingSvgPt are null'); return; }
 
   const hole    = currentHoleData();
   const svgH    = getSvgHeight(hole);
@@ -1147,11 +1181,13 @@ function logShotFromPicker(rating) {
   const svgXPct = pendingSvgPt ? pendingSvgPt.x / SVG_W : null;
   const svgYPct = pendingSvgPt ? pendingSvgPt.y / svgH  : null;
 
+  console.log('[SHOT FLOW] logShotFromPicker — logging shot:', { club: pickerClub, rating, lat, lng, svgXPct, svgYPct });
   addShot(pickerClub, rating, lat, lng, svgXPct, svgYPct);
   hideShotPicker();
   removeTempDot();
   pendingLL    = null;
   pickerClub   = null;
+  console.log('[SHOT FLOW] logShotFromPicker — shot logged, state reset. hole shots now:', currentHoleData()?.shots.length);
 
   drawShotsSVG(hole);
   updateHoleDrawer();
