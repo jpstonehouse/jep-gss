@@ -280,43 +280,13 @@ html, body {
   line-height: 1;
 }
 
-/* ── SHOT CONFIRM OVERLAY ─────────────────────────────────── */
-.shot-confirm {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -60%);
-  z-index: 300;
-  background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.22);
-  padding: var(--space-md) var(--space-lg);
-  text-align: center;
-  min-width: 210px;
-}
-
-.shot-confirm__title {
-  font-size: var(--text-lg);
-  font-weight: 700;
-  margin-bottom: var(--space-md);
-}
-
-.shot-confirm__btns {
-  display: flex;
-  gap: var(--space-sm);
-}
-
-.shot-confirm__btns .btn {
-  flex: 1;
-}
-
-/* ── SHOT PICKER BOTTOM SHEET ─────────────────────────────── */
-.shot-picker {
-  position: absolute;
+/* ── SHOT BOTTOM SHEET ────────────────────────────────────── */
+.shot-sheet {
+  position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 200;
+  z-index: 300;
   background: var(--color-surface);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: 0 -4px 24px rgba(0,0,0,0.18);
@@ -324,9 +294,20 @@ html, body {
   max-height: 85vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /* hidden by default — no display:none, no hidden attr */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(20px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.shot-picker__handle {
+.shot-sheet--open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.shot-sheet__handle {
   width: 40px;
   height: 4px;
   background: #d1d5db;
@@ -334,35 +315,50 @@ html, body {
   margin: 10px auto 4px;
 }
 
-.shot-picker__title {
+.shot-sheet__title {
   font-size: var(--text-md);
   font-weight: 600;
   text-align: center;
   padding: 4px var(--space-md) var(--space-sm);
 }
 
-.shot-picker__clubs {
+/* Steps inside the sheet — toggled via class, no display:none */
+.shot-sheet__step {
+  overflow: hidden;
+  opacity: 1;
+  pointer-events: auto;
+  max-height: 600px;
+  transition: max-height 0.18s ease, opacity 0.15s ease;
+}
+
+.shot-sheet__step--hidden {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.shot-sheet__clubs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-xs);
   padding: 0 var(--space-md) var(--space-sm);
 }
 
-.shot-picker__ratings {
-  padding: var(--space-sm) var(--space-md) var(--space-xs);
-  border-top: 1px solid var(--color-border);
-}
-
-.shot-picker__rate-label {
+.shot-sheet__rate-label {
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text-muted);
   text-align: center;
   margin-bottom: var(--space-sm);
+  padding: 0 var(--space-md);
 }
 
-.shot-picker__actions {
-  padding: var(--space-sm) var(--space-md) 0;
+.shot-sheet__rating-wrap {
+  padding: 0 var(--space-md) var(--space-xs);
+}
+
+.shot-sheet__actions {
+  padding: var(--space-sm) var(--space-md) var(--space-xs);
 }
 
 /* ── BOTTOM DRAWER ────────────────────────────────────────── */

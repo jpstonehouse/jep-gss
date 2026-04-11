@@ -932,8 +932,7 @@ function clientToSvgPt(clientX, clientY) {
 }
 
 function handleSVGTap(e) {
-  if (!document.getElementById('shot-picker').hidden)  return;
-  if (!document.getElementById('shot-confirm').hidden) return;
+  if (document.getElementById('shot-sheet').classList.contains('shot-sheet--open')) return;
 
   const svgPt = clientToSvgPt(e.clientX, e.clientY);
   if (!svgPt) return;
@@ -948,7 +947,7 @@ function handleSVGTap(e) {
     : null;
 
   placeTempDot(svgPt.x, svgPt.y);
-  showShotConfirm((hole.shots.length ?? 0) + 1);
+  openShotSheet((hole.shots.length ?? 0) + 1);
 }
 
 function placeTempDot(x, y) {
@@ -959,7 +958,7 @@ function placeTempDot(x, y) {
 function removeTempDot() {
   const el = document.getElementById('svg-temp');
   if (el) { el.setAttribute('cx', '-200'); el.setAttribute('cy', '-200'); }
-  pendingSvgPt = null;
+  // pendingSvgPt is NOT cleared here — the shot flow manages that
 }
 
 /**
@@ -1062,132 +1061,77 @@ function drawShotsSVG(hole) {
 }
 
 // =============================================================
-// SHOT FLOW — confirm → picker → log
+// SHOT FLOW — tap map → bottom sheet → club → rating → log
 // =============================================================
 
-function showShotConfirm(shotNum) {
-  console.log('[SHOT FLOW] showShotConfirm() called with shotNum:', shotNum);
-  console.log('[SHOT FLOW] showShotConfirm — pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt);
-  const confirmEl = document.getElementById('shot-confirm');
-  console.log('[SHOT FLOW] showShotConfirm BEFORE — hidden:', confirmEl.hidden, '| display:', window.getComputedStyle(confirmEl).display);
-  document.getElementById('confirm-num').textContent = shotNum;
-  confirmEl.hidden = false;
-  console.log('[SHOT FLOW] showShotConfirm AFTER — hidden:', confirmEl.hidden, '| display:', window.getComputedStyle(confirmEl).display);
+const CLUB_NAMES = {
+  D: 'Driver', '3W': '3 Wood', '5W': '5 Wood',
+  '3I': '3 Iron', '4I': '4 Iron', '5I': '5 Iron', '6I': '6 Iron',
+  '7I': '7 Iron', '8I': '8 Iron', '9I': '9 Iron',
+  PW: 'Pitching Wedge', SW: 'Sand Wedge', LW: 'Lob Wedge', P: 'Putter',
+};
+
+/** Open the sheet at Step 1 (club selection). pendingLL/pendingSvgPt already set. */
+function openShotSheet(shotNum) {
+  document.getElementById('sheet-title').textContent = `Shot ${shotNum} — Select Club`;
+  pickerClub = null;
+  document.getElementById('sheet-step-clubs').classList.remove('shot-sheet__step--hidden');
+  document.getElementById('sheet-step-ratings').classList.add('shot-sheet__step--hidden');
+  document.getElementById('shot-sheet').classList.add('shot-sheet--open');
 }
 
-function hideShotConfirm() {
-  document.getElementById('shot-confirm').hidden = true;
+function closeShotSheet() {
+  document.getElementById('shot-sheet').classList.remove('shot-sheet--open');
+  pickerClub = null;
 }
 
-function cancelConfirm() {
-  hideShotConfirm();
+/** Cancel — close sheet, remove temp dot, clear pending state. */
+function cancelSheet() {
+  closeShotSheet();
   removeTempDot();
-  pendingLL = null;
+  pendingSvgPt = null;
+  pendingLL    = null;
 }
 
-function confirmYes() {
-  console.log('[SHOT FLOW] confirmYes() called');
-  console.log('[SHOT FLOW] confirmYes — pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt, '| pickerClub:', pickerClub);
-  const confirmEl = document.getElementById('shot-confirm');
-  console.log('[SHOT FLOW] confirmYes — shot-confirm hidden:', confirmEl.hidden, '| display:', window.getComputedStyle(confirmEl).display);
-  hideShotConfirm();
-  console.log('[SHOT FLOW] confirmYes — shot-confirm after hide — hidden:', confirmEl.hidden, '| display:', window.getComputedStyle(confirmEl).display);
+/** Club tapped — advance to Step 2 (rating). */
+function sheetSelectClub(club) {
+  pickerClub = club;
+  const label = CLUB_NAMES[club] ?? club;
+  document.getElementById('sheet-rate-title').textContent = `Rate the ${label}`;
+  document.getElementById('sheet-rate-label').textContent = `${label} — Rate the shot`;
+  document.getElementById('sheet-step-clubs').classList.add('shot-sheet__step--hidden');
+  document.getElementById('sheet-step-ratings').classList.remove('shot-sheet__step--hidden');
+}
+
+/** Back button — return to Step 1 (club selection). */
+function sheetBackToClubs() {
+  pickerClub = null;
   const hole    = currentHoleData();
   const shotNum = (hole?.shots.length ?? 0) + 1;
-  console.log('[SHOT FLOW] confirmYes — hole:', hole?.holeNumber, '| existing shots:', hole?.shots.length, '| shotNum:', shotNum);
-  showShotPicker(shotNum);
+  document.getElementById('sheet-title').textContent = `Shot ${shotNum} — Select Club`;
+  document.getElementById('sheet-step-ratings').classList.add('shot-sheet__step--hidden');
+  document.getElementById('sheet-step-clubs').classList.remove('shot-sheet__step--hidden');
 }
 
-function showShotPicker(shotNum) {
-  console.log('[SHOT FLOW] showShotPicker() called with shotNum:', shotNum);
-  console.log('[SHOT FLOW] showShotPicker — pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt);
-  const pickerEl   = document.getElementById('shot-picker');
-  const clubsEl    = document.getElementById('picker-clubs');
-  const ratingsEl  = document.getElementById('picker-ratings');
-  console.log('[SHOT FLOW] showShotPicker BEFORE — shot-picker hidden:', pickerEl.hidden, '| display:', window.getComputedStyle(pickerEl).display);
-  console.log('[SHOT FLOW] showShotPicker BEFORE — picker-clubs display:', window.getComputedStyle(clubsEl).display, '| pointer-events:', window.getComputedStyle(clubsEl).pointerEvents);
-  console.log('[SHOT FLOW] showShotPicker BEFORE — picker-ratings hidden:', ratingsEl.hidden, '| display:', window.getComputedStyle(ratingsEl).display);
-
-  document.getElementById('picker-num').textContent = shotNum;
-  document.getElementById('picker-title').textContent = `Shot ${shotNum} — Select Club`;
-
-  // Use explicit style.display values — the [hidden] attribute on picker-ratings
-  // means style.display='' would restore the UA [hidden]{display:none} rule.
-  clubsEl.style.display   = 'grid';  // matches .shot-picker__clubs CSS
-  ratingsEl.style.display = 'none';  // force hide
-  pickerClub = null;
-
-  pickerEl.hidden = false;
-  console.log('[SHOT FLOW] showShotPicker AFTER — shot-picker hidden:', pickerEl.hidden, '| display:', window.getComputedStyle(pickerEl).display);
-  console.log('[SHOT FLOW] showShotPicker AFTER — picker-clubs display:', window.getComputedStyle(clubsEl).display, '| pointer-events:', window.getComputedStyle(clubsEl).pointerEvents);
-  console.log('[SHOT FLOW] showShotPicker AFTER — picker-ratings hidden:', ratingsEl.hidden, '| display:', window.getComputedStyle(ratingsEl).display);
-}
-
-function hideShotPicker() {
-  const pickerEl = document.getElementById('shot-picker');
-  console.log('[SHOT FLOW] hideShotPicker() called — shot-picker hidden BEFORE:', pickerEl.hidden, '| picker-ratings hidden:', document.getElementById('picker-ratings').hidden);
-  pickerEl.hidden = true;
-  pickerClub = null;
-  console.log('[SHOT FLOW] hideShotPicker() done — shot-picker hidden AFTER:', pickerEl.hidden, '| picker-ratings hidden:', document.getElementById('picker-ratings').hidden, '| picker-ratings display:', document.getElementById('picker-ratings').style.display);
-}
-
-function cancelPicker() {
-  hideShotPicker();
-  removeTempDot();
-  pendingLL = null;
-}
-
-/**
- * A club was tapped in the picker — show the rating grid.
- */
-function pickerSelectClub(club) {
-  console.log('[SHOT FLOW] pickerSelectClub() called with club:', club);
-  console.log('[SHOT FLOW] pickerSelectClub — pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt, '| previous pickerClub:', pickerClub);
-  pickerClub = club;
-
-  const CLUB_NAMES = {
-    D: 'Driver', '3W': '3 Wood', '5W': '5 Wood',
-    '3I': '3 Iron', '4I': '4 Iron', '5I': '5 Iron', '6I': '6 Iron',
-    '7I': '7 Iron', '8I': '8 Iron', '9I': '9 Iron',
-    PW: 'Pitching Wedge', SW: 'Sand Wedge', LW: 'Lob Wedge', P: 'Putter',
-  };
-
-  const label = CLUB_NAMES[club] ?? club;
-  document.getElementById('picker-title').textContent       = `Rate the ${label}`;
-  document.getElementById('picker-rate-label').textContent  = `${label} — Rate the shot`;
-  document.getElementById('picker-clubs').style.display     = 'none';   // force hide
-  const ratingsEl = document.getElementById('picker-ratings');
-  ratingsEl.hidden       = false;   // remove [hidden] attr — some browsers block pointer events on [hidden] even with display:block
-  ratingsEl.style.display = 'block'; // explicit show
-  console.log('[SHOT FLOW] pickerSelectClub AFTER — picker-clubs display:', window.getComputedStyle(document.getElementById('picker-clubs')).display);
-  console.log('[SHOT FLOW] pickerSelectClub AFTER — picker-ratings hidden:', ratingsEl.hidden, '| display:', window.getComputedStyle(ratingsEl).display, '| pointer-events:', window.getComputedStyle(ratingsEl).pointerEvents);
-}
-
-/**
- * A rating was tapped — log the shot and close the picker.
- */
-function logShotFromPicker(rating) {
-  console.log('[SHOT FLOW] logShotFromPicker() called with rating:', rating);
-  console.log('[SHOT FLOW] logShotFromPicker — pickerClub:', pickerClub, '| pendingLL:', pendingLL, '| pendingSvgPt:', pendingSvgPt);
-  const pickerEl = document.getElementById('shot-picker');
-  console.log('[SHOT FLOW] logShotFromPicker — shot-picker hidden:', pickerEl.hidden, '| display:', window.getComputedStyle(pickerEl).display);
-  if (!pickerClub) { console.warn('[SHOT FLOW] logShotFromPicker — EARLY RETURN: pickerClub is null'); return; }
-  if (!pendingLL && !pendingSvgPt) { console.warn('[SHOT FLOW] logShotFromPicker — EARLY RETURN: both pendingLL and pendingSvgPt are null'); return; }
+/** Rating tapped — log the shot, close sheet, clear pending state. */
+function logShotFromSheet(rating) {
+  if (!pickerClub)                  return;
+  if (!pendingLL && !pendingSvgPt)  return;
 
   const hole    = currentHoleData();
   const svgH    = getSvgHeight(hole);
-  const lat     = pendingLL?.lat    ?? null;
-  const lng     = pendingLL?.lng    ?? null;
+  const lat     = pendingLL?.lat  ?? null;
+  const lng     = pendingLL?.lng  ?? null;
   const svgXPct = pendingSvgPt ? pendingSvgPt.x / SVG_W : null;
   const svgYPct = pendingSvgPt ? pendingSvgPt.y / svgH  : null;
 
-  console.log('[SHOT FLOW] logShotFromPicker — logging shot:', { club: pickerClub, rating, lat, lng, svgXPct, svgYPct });
   addShot(pickerClub, rating, lat, lng, svgXPct, svgYPct);
-  hideShotPicker();
+
+  // Close and clear AFTER the shot is safely logged
+  closeShotSheet();
   removeTempDot();
+  pendingSvgPt = null;
   pendingLL    = null;
-  pickerClub   = null;
-  console.log('[SHOT FLOW] logShotFromPicker — shot logged, state reset. hole shots now:', currentHoleData()?.shots.length);
 
   drawShotsSVG(hole);
   updateHoleDrawer();
@@ -1237,9 +1181,9 @@ function updateHoleDrawer() {
   const undoBtn = document.getElementById('drawer-undo-btn');
   if (undoBtn) undoBtn.disabled = hole.shots.length === 0;
 
-  // "On the Green" button (in drawer): show any time onGreen is not yet set
+  // "On the Green" button (in drawer): only after 2+ shots, before onGreen is set
   const onGreenBtn = document.getElementById('on-green-btn');
-  if (onGreenBtn) onGreenBtn.hidden = !!hole.onGreen;
+  if (onGreenBtn) onGreenBtn.hidden = !(hole.shots.length >= 2 && !hole.onGreen);
 
   // "In the Hole!" button: only after onGreen flag set AND at least one putt logged
   const inHoleBtn = document.getElementById('in-hole-btn');
@@ -1768,26 +1712,23 @@ function wireEvents() {
     if (state.currentHole < state.totalHoles) setState({ currentHole: state.currentHole + 1 });
   });
 
-  // ── Shot confirmation overlay ────────────────────────────────
-  document.getElementById('confirm-yes-btn').addEventListener('click', confirmYes);
-  document.getElementById('confirm-retap-btn').addEventListener('click', cancelConfirm);
-
-  // ── Shot picker: club grid ───────────────────────────────────
-  document.getElementById('picker-clubs').addEventListener('click', (e) => {
+  // ── Shot sheet: club grid (Step 1) ──────────────────────────
+  document.getElementById('sheet-step-clubs').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-club]');
     if (!btn) return;
-    pickerSelectClub(btn.dataset.club);
+    sheetSelectClub(btn.dataset.club);
   });
 
-  // ── Shot picker: rating grid ─────────────────────────────────
-  document.getElementById('picker-ratings').addEventListener('click', (e) => {
+  // ── Shot sheet: rating grid (Step 2) ────────────────────────
+  document.getElementById('sheet-step-ratings').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-rating]');
     if (!btn) return;
-    logShotFromPicker(btn.dataset.rating);
+    logShotFromSheet(btn.dataset.rating);
   });
 
-  // ── Shot picker: cancel ──────────────────────────────────────
-  document.getElementById('picker-cancel-btn').addEventListener('click', cancelPicker);
+  // ── Shot sheet: cancel / back ────────────────────────────────
+  document.getElementById('sheet-cancel-btn').addEventListener('click', cancelSheet);
+  document.getElementById('sheet-back-btn').addEventListener('click', sheetBackToClubs);
 
   // ── Drawer: tap bar or handle to toggle ──────────────────────
   document.getElementById('drawer-bar').addEventListener('click', toggleDrawer);

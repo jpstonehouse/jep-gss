@@ -12,8 +12,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="styles.css?v=22" />
-  <script src="app.js?v=22" defer></script>
+  <link rel="stylesheet" href="styles.css?v=23" />
+  <script src="app.js?v=23" defer></script>
   <title>JEP GSS</title>
 </head>
 <body>
@@ -126,74 +126,66 @@
       <!-- SVG hole diagram — fills remaining space, scrolls for long holes -->
       <div id="hole-svg-wrap" class="hole-svg-wrap"></div>
 
-      <!-- ── Shot confirmation card (shown after tap) ────────────
-           Appears near centre screen with Yes / Re-tap buttons.
+      <!-- ── Shot bottom sheet (slides up on map tap) ────────────
+           Single panel: Step 1 = club grid, Step 2 = rating grid.
+           Shown/hidden via opacity + pointer-events only — no hidden attr.
       ──────────────────────────────────────────────────────────── -->
-      <div id="shot-confirm" class="shot-confirm" hidden>
-        <div class="shot-confirm__title">Shot <span id="confirm-num">1</span> here?</div>
-        <div class="shot-confirm__btns">
-          <button id="confirm-yes-btn" class="btn btn--primary">Yes</button>
-          <button id="confirm-retap-btn" class="btn btn--secondary">Re-tap</button>
-        </div>
-      </div>
+      <div id="shot-sheet" class="shot-sheet">
+        <div class="shot-sheet__handle"></div>
 
-      <!-- ── Shot picker bottom sheet (club → rating) ────────────
-           Slides up after "Yes" is tapped.
-           Club row appears first; rating grid appears after club tap.
-      ──────────────────────────────────────────────────────────── -->
-      <div id="shot-picker" class="shot-picker" hidden>
-        <div class="shot-picker__handle"></div>
-        <div class="shot-picker__title" id="picker-title">Shot <span id="picker-num">1</span> — Select Club</div>
-
-        <!-- Club grid -->
-        <div class="shot-picker__clubs" id="picker-clubs">
-          <!-- Woods -->
-          <button class="club-btn" data-club="D"  title="Driver">D</button>
-          <button class="club-btn" data-club="3W" title="3 Wood">3W</button>
-          <button class="club-btn" data-club="5W" title="5 Wood">5W</button>
-          <div class="club-grid__gap"></div>
-          <!-- Irons -->
-          <button class="club-btn" data-club="3I" title="3 Iron">3I</button>
-          <button class="club-btn" data-club="4I" title="4 Iron">4I</button>
-          <button class="club-btn" data-club="5I" title="5 Iron">5I</button>
-          <button class="club-btn" data-club="6I" title="6 Iron">6I</button>
-          <button class="club-btn" data-club="7I" title="7 Iron">7I</button>
-          <button class="club-btn" data-club="8I" title="8 Iron">8I</button>
-          <button class="club-btn" data-club="9I" title="9 Iron">9I</button>
-          <button class="club-btn" data-club="PW" title="Pitching Wedge">PW</button>
-          <!-- Wedges -->
-          <button class="club-btn" data-club="SW" title="Sand Wedge">SW</button>
-          <button class="club-btn" data-club="LW" title="Lob Wedge">LW</button>
-          <!-- Putter full-width -->
-          <button class="club-btn club-btn--putter" data-club="P" title="Putter">Putter</button>
-        </div>
-
-        <!-- Rating grid (hidden until club selected) -->
-        <div class="shot-picker__ratings" id="picker-ratings" hidden>
-          <div class="shot-picker__rate-label" id="picker-rate-label">Rate the shot</div>
-          <div class="rating-grid">
-            <button class="rating-btn rating-btn--great"   data-rating="!" >!</button>
-            <button class="rating-btn rating-btn--good2"   data-rating="++">++</button>
-            <button class="rating-btn rating-btn--good1"   data-rating="+" >+</button>
-            <button class="rating-btn rating-btn--ok"      data-rating="-" >-</button>
-            <button class="rating-btn rating-btn--bad1"    data-rating="--">--</button>
-            <button class="rating-btn rating-btn--bad2"    data-rating="#" >#</button>
-            <button class="rating-btn rating-btn--penalty" data-rating="OB">OB</button>
-            <button class="rating-btn rating-btn--penalty" data-rating="L" >L</button>
+        <!-- Step 1: Club selection -->
+        <div id="sheet-step-clubs" class="shot-sheet__step">
+          <div class="shot-sheet__title" id="sheet-title">Shot 1 — Select Club</div>
+          <div class="shot-sheet__clubs">
+            <button class="club-btn" data-club="D"  title="Driver">D</button>
+            <button class="club-btn" data-club="3W" title="3 Wood">3W</button>
+            <button class="club-btn" data-club="5W" title="5 Wood">5W</button>
+            <div class="club-grid__gap"></div>
+            <button class="club-btn" data-club="3I" title="3 Iron">3I</button>
+            <button class="club-btn" data-club="4I" title="4 Iron">4I</button>
+            <button class="club-btn" data-club="5I" title="5 Iron">5I</button>
+            <button class="club-btn" data-club="6I" title="6 Iron">6I</button>
+            <button class="club-btn" data-club="7I" title="7 Iron">7I</button>
+            <button class="club-btn" data-club="8I" title="8 Iron">8I</button>
+            <button class="club-btn" data-club="9I" title="9 Iron">9I</button>
+            <button class="club-btn" data-club="PW" title="Pitching Wedge">PW</button>
+            <button class="club-btn" data-club="SW" title="Sand Wedge">SW</button>
+            <button class="club-btn" data-club="LW" title="Lob Wedge">LW</button>
+            <button class="club-btn club-btn--putter" data-club="P" title="Putter">Putter</button>
           </div>
-          <div class="rating-legend">
-            <span class="rating-legend__item"><b>!</b> +3</span>
-            <span class="rating-legend__item"><b>++</b> +2</span>
-            <span class="rating-legend__item"><b>+</b> +1</span>
-            <span class="rating-legend__item"><b>-</b> 0</span>
-            <span class="rating-legend__item"><b>--</b> -1</span>
-            <span class="rating-legend__item"><b>#</b> -2</span>
-            <span class="rating-legend__item"><b>OB/L</b> -3</span>
+          <div class="shot-sheet__actions">
+            <button id="sheet-cancel-btn" class="btn btn--secondary btn--full">Cancel</button>
           </div>
         </div>
 
-        <div class="shot-picker__actions">
-          <button id="picker-cancel-btn" class="btn btn--secondary btn--full">Cancel</button>
+        <!-- Step 2: Rating selection -->
+        <div id="sheet-step-ratings" class="shot-sheet__step shot-sheet__step--hidden">
+          <div class="shot-sheet__title" id="sheet-rate-title">Rate the shot</div>
+          <div class="shot-sheet__rate-label" id="sheet-rate-label">Rate the shot</div>
+          <div class="shot-sheet__rating-wrap">
+            <div class="rating-grid">
+              <button class="rating-btn rating-btn--great"   data-rating="!" >!</button>
+              <button class="rating-btn rating-btn--good2"   data-rating="++">++</button>
+              <button class="rating-btn rating-btn--good1"   data-rating="+" >+</button>
+              <button class="rating-btn rating-btn--ok"      data-rating="-" >-</button>
+              <button class="rating-btn rating-btn--bad1"    data-rating="--">--</button>
+              <button class="rating-btn rating-btn--bad2"    data-rating="#" >#</button>
+              <button class="rating-btn rating-btn--penalty" data-rating="OB">OB</button>
+              <button class="rating-btn rating-btn--penalty" data-rating="L" >L</button>
+            </div>
+            <div class="rating-legend">
+              <span class="rating-legend__item"><b>!</b> +3</span>
+              <span class="rating-legend__item"><b>++</b> +2</span>
+              <span class="rating-legend__item"><b>+</b> +1</span>
+              <span class="rating-legend__item"><b>-</b> 0</span>
+              <span class="rating-legend__item"><b>--</b> -1</span>
+              <span class="rating-legend__item"><b>#</b> -2</span>
+              <span class="rating-legend__item"><b>OB/L</b> -3</span>
+            </div>
+          </div>
+          <div class="shot-sheet__actions">
+            <button id="sheet-back-btn" class="btn btn--secondary btn--full">&#8592; Back</button>
+          </div>
         </div>
       </div>
 
