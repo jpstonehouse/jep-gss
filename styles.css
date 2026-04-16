@@ -240,6 +240,7 @@ html, body {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   z-index: 1;
+  padding-bottom: 44px; /* room for always-visible drawer bar */
 }
 
 /* ── HTML SHOT DOTS (fixed screen size overlay) ───────────── */
@@ -372,12 +373,14 @@ html, body {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: 0 -2px 14px rgba(0,0,0,0.12);
   overflow: hidden;
-  transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
-  height: 58px;
+  height: 220px;
+  /* collapsed: only 44px (handle + bar) visible */
+  transform: translateY(calc(100% - 44px));
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
 }
 
 .hole-drawer--expanded {
-  height: 220px;
+  transform: translateY(0);
 }
 
 .hole-drawer__handle {
@@ -573,42 +576,12 @@ html, body {
 .rating-chip--bad2    { background: var(--color-bad2); }
 .rating-chip--penalty { background: var(--color-penalty); }
 
-/* ── "IN THE HOLE!" FLOATING BUTTON ──────────────────────── */
-.in-hole-btn {
-  position: absolute;
-  bottom: 52px;       /* sits just above the collapsed drawer bar */
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 250;
+/* ── "IN THE HOLE!" RATING GRID BUTTON ───────────────────── */
+.rating-btn--in-hole {
+  width: 100%;
   background: #16a34a;
-  color: #fff;
-  border: none;
-  border-radius: 24px;
-  padding: 13px 30px;
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.30);
-  cursor: pointer;
-  white-space: nowrap;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.in-hole-btn:active {
-  background: #15803d;
-  transform: translateX(-50%) scale(0.96);
-}
-
-/* ── "ON THE GREEN" DRAWER BUTTON ────────────────────────── */
-.btn--on-green {
-  flex: 1;
-  background: #0284c7;
-  color: #fff;
-  border: none;
-}
-
-.btn--on-green:active {
-  background: #0369a1;
+  margin-top: var(--space-sm);
+  font-size: var(--text-md);
 }
 
 /* ── END ROUND BUTTON ─────────────────────────────────────── */

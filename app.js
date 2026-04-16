@@ -59,6 +59,22 @@ const RAPIDAPI = {
 // =============================================================
 const LOCAL_COURSES = [
   {
+    name: 'Rancho San Marcos Golf Course',
+    totalHoles: 9,
+    center: { lat: 34.547, lng: -119.873 },
+    holes: [
+      { par: 5, yardage: 560, tee: { lat: 34.545614, lng: -119.874340 }, green: { lat: 34.544863, lng: -119.869048 } },
+      { par: 3, yardage: 172, tee: { lat: 34.544004, lng: -119.867940 }, green: { lat: 34.543541, lng: -119.866385 } },
+      { par: 4, yardage: 314, tee: { lat: 34.543528, lng: -119.865590 }, green: { lat: 34.545163, lng: -119.867919 } },
+      { par: 4, yardage: 379, tee: { lat: 34.545522, lng: -119.869312 }, green: { lat: 34.546306, lng: -119.872451 } },
+      { par: 4, yardage: 166, tee: { lat: 34.546001, lng: -119.873287 }, green: { lat: 34.547203, lng: -119.873879 } },
+      { par: 5, yardage: 585, tee: { lat: 34.547811, lng: -119.874107 }, green: { lat: 34.550631, lng: -119.878284 } },
+      { par: 3, yardage: 165, tee: { lat: 34.550806, lng: -119.879079 }, green: { lat: 34.550497, lng: -119.880689 } },
+      { par: 4, yardage: 388, tee: { lat: 34.550018, lng: -119.880603 }, green: { lat: 34.549058, lng: -119.876947 } },
+      { par: 4, yardage: 387, tee: { lat: 34.548662, lng: -119.876294 }, green: { lat: 34.546093, lng: -119.874228 } },
+    ],
+  },
+  {
     name: 'Zaca Creek Golf Course',
     totalHoles: 9,
     center: { lat: 34.608393, lng: -120.197016 },
@@ -891,13 +907,16 @@ function initHoleSVG(hole) {
 
   document.getElementById('hole-svg').addEventListener('click', handleSVGTap);
 
-  // Bear tap: dismiss the bear (shot plotting already works at any time)
+  // Bear tap: dismiss immediately on touchend (iOS SVG <image> may not fire click)
   const bearEl = document.getElementById('svg-bear');
   if (bearEl) {
-    bearEl.addEventListener('click', (e) => {
+    const dismissBear = (e) => {
+      e.preventDefault();
       e.stopPropagation();
       bearEl.setAttribute('display', 'none');
-    });
+    };
+    bearEl.addEventListener('touchend', dismissBear);
+    bearEl.addEventListener('click', dismissBear);
   }
 
   // Re-draw fixed-position dots whenever the layout changes (resize, orientation)
@@ -974,12 +993,6 @@ function drawShotsSVG(hole) {
   overlay.innerHTML  = '';
 
   const shots = hole.shots;
-
-  // Hide the bear once any shot is logged
-  if (shots.length > 0) {
-    const bearEl = document.getElementById('svg-bear');
-    if (bearEl) bearEl.setAttribute('display', 'none');
-  }
 
   if (shots.length === 0) return;
 
@@ -1083,6 +1096,8 @@ function openShotSheet(shotNum) {
 function closeShotSheet() {
   document.getElementById('shot-sheet').classList.remove('shot-sheet--open');
   pickerClub = null;
+  const inHoleBtnGrid = document.getElementById('rating-in-hole-btn');
+  if (inHoleBtnGrid) inHoleBtnGrid.hidden = true;
 }
 
 /** Cancel — close sheet, remove temp dot, clear pending state. */
@@ -1101,6 +1116,9 @@ function sheetSelectClub(club) {
   document.getElementById('sheet-rate-label').textContent = `${label} — Rate the shot`;
   document.getElementById('sheet-step-clubs').classList.add('shot-sheet__step--hidden');
   document.getElementById('sheet-step-ratings').classList.remove('shot-sheet__step--hidden');
+  // Show "In the Hole!" only when putter is selected
+  const inHoleBtnGrid = document.getElementById('rating-in-hole-btn');
+  if (inHoleBtnGrid) inHoleBtnGrid.hidden = (club !== 'P');
 }
 
 /** Back button — return to Step 1 (club selection). */
@@ -1143,6 +1161,52 @@ function logShotFromSheet(rating) {
   }
 }
 
+/**
+ * "In the Hole!" tapped in the rating grid — logs the current putter shot
+ * with a neutral rating, then completes the hole and advances.
+ */
+function inTheHoleFromSheet() {
+  if (!pickerClub) return;
+  if (!pendingLL && !pendingSvgPt) return;
+
+  const hole = currentHoleData();
+  if (!hole) return;
+
+  const svgH    = getSvgHeight(hole);
+  const lat     = pendingLL?.lat  ?? null;
+  const lng     = pendingLL?.lng  ?? null;
+  const svgXPct = pendingSvgPt ? pendingSvgPt.x / SVG_W : null;
+  const svgYPct = pendingSvgPt ? pendingSvgPt.y / svgH  : null;
+
+  addShot(pickerClub, '-', lat, lng, svgXPct, svgYPct);
+  closeShotSheet();
+  removeTempDot();
+  pendingSvgPt = null;
+  pendingLL    = null;
+
+  drawShotsSVG(hole);
+
+  hole.complete = true;
+  persist();
+
+  if (state.currentHole < state.totalHoles) {
+    setState({ currentHole: state.currentHole + 1 });
+  } else {
+    if (confirm('Last hole complete! End round and save to history?')) {
+      archiveRound();
+      destroyHoleSVG();
+      setState({
+        courseName:   null,
+        totalHoles:   18,
+        holes:        [],
+        currentHole:  1,
+        mockMode:     false,
+        activeScreen: 'course',
+      });
+    }
+  }
+}
+
 // =============================================================
 // BOTTOM DRAWER
 // =============================================================
@@ -1180,14 +1244,6 @@ function updateHoleDrawer() {
   // Undo button state
   const undoBtn = document.getElementById('drawer-undo-btn');
   if (undoBtn) undoBtn.disabled = hole.shots.length === 0;
-
-  // "On the Green" button (in drawer): only after 2+ shots, before onGreen is set
-  const onGreenBtn = document.getElementById('on-green-btn');
-  if (onGreenBtn) onGreenBtn.hidden = !(hole.shots.length >= 2 && !hole.onGreen);
-
-  // "In the Hole!" button: only after onGreen flag set AND at least one putt logged
-  const inHoleBtn = document.getElementById('in-hole-btn');
-  if (inHoleBtn) inHoleBtn.hidden = !hole.onGreen || !hole.shots.some(s => s.isPutt);
 }
 
 function expandDrawer() {
@@ -1797,9 +1853,8 @@ function wireEvents() {
     navigateTo('history');
   });
 
-  // ── "On the Green" / "In the Hole!" ─────────────────────────
-  document.getElementById('on-green-btn').addEventListener('click', setOnGreen);
-  document.getElementById('in-hole-btn').addEventListener('click', completeHole);
+  // ── "In the Hole!" (in rating grid, shown when putter selected) ──
+  document.getElementById('rating-in-hole-btn').addEventListener('click', inTheHoleFromSheet);
 
   // ── API debug overlay: close ─────────────────────────────────
   document.getElementById('api-debug-close').addEventListener('click', () => {
