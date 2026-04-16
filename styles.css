@@ -349,6 +349,7 @@ html, body {
 .hole-svg-wrap {
   flex: 1;
   min-height: 0;
+  max-height: calc(100vh - 220px); /* leave room for Done with Hole button */
   overflow: hidden;
   z-index: 1;
 }
