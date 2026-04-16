@@ -12,8 +12,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="styles.css?v=26" />
-  <script src="app.js?v=26" defer></script>
+  <link rel="stylesheet" href="styles.css?v=27" />
+  <script src="app.js?v=27" defer></script>
   <title>JEP GSS</title>
 </head>
 <body>
@@ -192,7 +192,9 @@
       <!-- ── "In the Hole!" button — shown after any putt is logged ─
            Positioned above the drawer bar. Tapping completes the hole.
       ──────────────────────────────────────────────────────────── -->
-      <button id="in-hole-btn" class="in-hole-btn" hidden>&#9971; In the Hole!</button>
+      <button id="in-hole-btn" class="in-hole-btn" hidden
+              onclick="inTheHole()"
+              ontouchend="event.preventDefault(); inTheHole();">&#9971; In the Hole!</button>
 
       <!-- ── Bottom drawer ─────────────────────────────────────────
            Collapsed: thin bar with handle + quick stats.

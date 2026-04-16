@@ -873,7 +873,7 @@ function initHoleSVG(hole) {
   wrap.innerHTML = `
     <div id="hole-svg-container" style="position:relative;width:100%;height:calc(100% - 44px);">
       <svg id="hole-svg" viewBox="0 0 ${SVG_W} ${svgH}" width="100%" height="100%"
-           preserveAspectRatio="xMidYMid slice"
+           preserveAspectRatio="xMidYMid meet"
            style="display:block;touch-action:manipulation;">
         <!-- fairway background -->
         <rect width="${SVG_W}" height="${svgH}" fill="#1e5c38"/>
@@ -1534,18 +1534,16 @@ function toggleDevPanel() {
 // =============================================================
 
 function endRound() {
-  if (confirm('End round and save to history?')) {
-    archiveRound();
-    destroyHoleSVG();
-    setState({
-      courseName:     null,
-      totalHoles:     18,
-      holes:          [],
-      currentHole:    1,
-      mockMode:       false,
-      activeScreen:   'course',
-    });
-  }
+  archiveRound();
+  destroyHoleSVG();
+  setState({
+    courseName:   null,
+    totalHoles:   18,
+    holes:        [],
+    currentHole:  1,
+    mockMode:     false,
+    activeScreen: 'course',
+  });
 }
 
 /** Mark the current hole as reached the green. Enables putt logging and In the Hole! */
@@ -1767,17 +1765,15 @@ function wireEvents() {
   // ── Scorecard: export / new round ───────────────────────────
   document.getElementById('export-btn').addEventListener('click', exportRound);
   document.getElementById('new-round-btn').addEventListener('click', () => {
-    if (confirm('Start a new round? Current round will be saved locally.')) {
-      archiveRound();
-      destroyHoleSVG();
-      setState({
-        courseName:  null,
-        totalHoles:  18,
-        holes:       [],
-        currentHole: 1,
-        activeScreen: 'course',
-      });
-    }
+    archiveRound();
+    destroyHoleSVG();
+    setState({
+      courseName:   null,
+      totalHoles:   18,
+      holes:        [],
+      currentHole:  1,
+      activeScreen: 'course',
+    });
   });
 
   // ── Yardage: tap row → go to that hole ──────────────────────
@@ -1801,10 +1797,7 @@ function wireEvents() {
     navigateTo('history');
   });
 
-  // ── "In the Hole!" — wired via both onclick and touchend to work on iOS PWA ──
-  const inHoleBtn = document.getElementById('in-hole-btn');
-  inHoleBtn.onclick = inTheHole;
-  inHoleBtn.addEventListener('touchend', (e) => { e.preventDefault(); inTheHole(); });
+  // "In the Hole!" button is wired via inline onclick/ontouchend in the HTML element.
 
   // ── API debug overlay: close ─────────────────────────────────
   document.getElementById('api-debug-close').addEventListener('click', () => {
