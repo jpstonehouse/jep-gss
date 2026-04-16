@@ -432,16 +432,11 @@ function parseApiScorecard(scorecard) {
 }
 
 function searchNearbyCourses(lat, lng) {
-  const RADIUS_YARDS = 17600; // 10 miles
-  const results = [];
-
-  LOCAL_COURSES.forEach(course => {
+  // Always include ALL local courses — never filter by radius
+  const results = LOCAL_COURSES.map(course => {
     const dist = haversineDistanceYards(lat, lng, course.center.lat, course.center.lng);
-    if (dist <= RADIUS_YARDS) {
-      results.push({ ...course, distanceYards: dist, source: 'local' });
-    }
+    return { ...course, distanceYards: dist, source: 'local' };
   });
-
   results.sort((a, b) => a.distanceYards - b.distanceYards);
   nearbyResults       = results;
   courseSearchResults = [...nearbyResults];
@@ -540,7 +535,7 @@ function renderCourseList() {
 
   container.innerHTML = clearHtml + courseSearchResults.map((course, idx) => {
     const badge = course.source === 'local'
-      ? `<span class="course-card__badge">Nearby</span>`
+      ? `<span class="course-card__badge">Local</span>`
       : `<span class="course-card__badge course-card__badge--search">Search</span>`;
     const detail = course.distanceYards != null
       ? `${course.totalHoles} holes · ${(course.distanceYards / 1760).toFixed(1)} mi away`
@@ -1225,9 +1220,12 @@ function renderNav() {
 
 // ── Course screen ─────────────────────────────────────────────
 function renderCourseScreen() {
-  // Always pre-populate nearbyResults with local courses so they show without GPS
-  if (nearbyResults.length === 0) {
-    nearbyResults = LOCAL_COURSES.map(c => ({ ...c, distanceYards: null, source: 'local' }));
+  // Always ensure ALL local courses are present — no GPS or radius required
+  const localEntries = LOCAL_COURSES.map(c => ({ ...c, distanceYards: null, source: 'local' }));
+
+  // If nearbyResults is empty or doesn't cover all local courses, rebuild it
+  if (nearbyResults.length < LOCAL_COURSES.length) {
+    nearbyResults = localEntries;
   }
 
   // Reset GPS search trigger when no fix yet
@@ -1235,9 +1233,10 @@ function renderCourseScreen() {
     courseSearchFired = false;
   }
 
-  // Ensure something is shown (local courses at minimum)
-  if (courseSearchResults.length === 0) {
-    courseSearchResults = [...nearbyResults];
+  // Ensure local courses appear even when a name search has run
+  const hasLocal = courseSearchResults.some(c => c.source === 'local');
+  if (!hasLocal || courseSearchResults.length === 0) {
+    courseSearchResults = [...nearbyResults, ...courseSearchResults.filter(c => c.source !== 'local')];
   }
 
   renderCourseList();

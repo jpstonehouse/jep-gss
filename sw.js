@@ -4,14 +4,14 @@
 // for any future API calls (course data, etc.)
 // =============================================================
 
-const CACHE_NAME = 'jep-gss-v32';
+const CACHE_NAME = 'jep-gss-v33';
 
 // App shell assets to pre-cache on install
 const PRECACHE_ASSETS = [
   './',
   './index.html',
-  './app.js?v=32',
-  './styles.css?v=32',
+  './app.js?v=33',
+  './styles.css?v=33',
   './manifest.json',
   './JEP%20GSS%20Logo.png',
 ];
