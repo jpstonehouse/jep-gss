@@ -871,7 +871,7 @@ function initHoleSVG(hole) {
            font-size="14" fill="rgba(255,255,255,0.7)">Tap to plot shots</text>`;
 
   wrap.innerHTML = `
-    <div id="hole-svg-container" style="position:relative;width:100%;height:calc(100% - 44px);">
+    <div id="hole-svg-container" style="position:relative;width:100%;height:100%;">
       <svg id="hole-svg" viewBox="0 0 ${SVG_W} ${svgH}" width="100%" height="100%"
            preserveAspectRatio="xMidYMid meet"
            style="display:block;touch-action:manipulation;">
@@ -1132,9 +1132,9 @@ function logShotFromSheet(rating) {
   updateHoleDrawer();
 
   if (rating === '!') {
-    showToast('Was it really that good?', document.getElementById('drawer-bar'));
+    showToast('Was it really that good?', null);
   } else if (rating === 'OB' || rating === 'L') {
-    showToast(`${rating} — penalty stroke added`, document.getElementById('drawer-bar'));
+    showToast(`${rating} — penalty stroke added`, null);
   }
 }
 
@@ -1147,35 +1147,18 @@ function updateHoleDrawer() {
   if (!hole) return;
 
   const strokes = calcStrokes(hole);
-  const putts   = hole.shots.filter(s => s.club === 'P').length;
   const rating  = calcRating(hole);
 
-  // Collapsed bar
-  document.getElementById('drawer-title').textContent =
-    `Hole ${hole.holeNumber} · Par ${hole.par}`;
-  document.getElementById('drawer-quick-stats').textContent =
-    `${strokes} stroke${strokes !== 1 ? 's' : ''} · GSS ${fmtRating(rating)}`;
-
-  // Expanded detail
-  document.getElementById('drawer-strokes').textContent = strokes || '—';
-  document.getElementById('drawer-putts').textContent   = strokes ? putts : '—';
-  document.getElementById('drawer-gss').textContent     = strokes ? fmtRating(rating) : '—';
-
-  // Shot list
-  const shotsEl = document.getElementById('drawer-shots');
-  if (hole.shots.length === 0) {
-    shotsEl.textContent = '—';
-  } else {
-    shotsEl.innerHTML = hole.shots.map((s, i) => {
-      const clr = SHOT_COLORS[s.rating] ?? { bg: '#f3f4f6', border: '#9ca3af', text: '#4b5563' };
-      return `<span class="drawer-shot-chip" style="background:${clr.bg};border-color:${clr.border};color:${clr.text};">${i + 1}·${s.club}·${s.rating}</span>`;
-    }).join('');
+  // Update the permanent stats bar
+  const statsText = document.getElementById('stats-text');
+  if (statsText) {
+    statsText.textContent =
+      `Hole ${hole.holeNumber} · Par ${hole.par} · Strokes: ${strokes} · GSS: ${fmtRating(rating)}`;
   }
 
-  // Undo button state
-  const undoBtn = document.getElementById('drawer-undo-btn');
+  // Undo button in stats bar
+  const undoBtn = document.getElementById('stats-undo-btn');
   if (undoBtn) undoBtn.disabled = hole.shots.length === 0;
-
 }
 
 function expandDrawer() {
@@ -1220,16 +1203,24 @@ function renderScreenVisibility() {
 }
 
 function renderNav() {
-  const nav = document.getElementById('nav');
-  if (!nav) return;
-  // Hide nav on course screen only when no round is active, and always on round-review
-  const inRound = state.holes.length > 0;
-  const hideNav = (state.activeScreen === 'course' && !inRound) || state.activeScreen === 'round-review';
-  nav.classList.toggle('nav--hidden', hideNav);
+  const inRound   = state.holes.length > 0;
+  const bottomNav = document.getElementById('bottom-nav');
+  const statsBar  = document.getElementById('stats-bar');
+  const app       = document.getElementById('app');
 
-  nav.querySelectorAll('.nav__btn').forEach((btn) => {
-    btn.classList.toggle('nav__btn--active', btn.dataset.screen === state.activeScreen);
-  });
+  // Show bottom nav and stats bar only during an active round
+  if (bottomNav) bottomNav.hidden = !inRound;
+  if (statsBar)  statsBar.hidden  = !inRound;
+
+  // Add bottom padding to app so fixed bars don't cover content
+  if (app) app.classList.toggle('app--in-round', inRound);
+
+  // Highlight active nav button
+  if (bottomNav) {
+    bottomNav.querySelectorAll('.bottom-nav__btn').forEach((btn) => {
+      btn.classList.toggle('bottom-nav__btn--active', btn.dataset.screen === state.activeScreen);
+    });
+  }
 }
 
 // ── Course screen ─────────────────────────────────────────────
@@ -1269,6 +1260,10 @@ function renderHoleView() {
   if (svgInitHole !== state.currentHole) {
     initHoleSVG(hole);
   }
+
+  // Update finish button text with current hole number
+  const finishBtn = document.getElementById('finish-hole-btn');
+  if (finishBtn) finishBtn.textContent = `\u2713 Done with Hole ${hole.holeNumber}`;
 
   updateHoleDrawer();
 }
@@ -1623,10 +1618,7 @@ function showToast(message, anchor) {
 
 function wireEvents() {
 
-  // ── Nav buttons ──────────────────────────────────────────────
-  document.querySelectorAll('.nav__btn').forEach((btn) => {
-    btn.addEventListener('click', () => navigateTo(btn.dataset.screen));
-  });
+  // Bottom nav buttons use inline onclick in HTML; no addEventListener needed here.
 
   // ── Logo: triple-tap → dev mode ──────────────────────────────
   let logoTaps = 0, logoTapTimer = null;
@@ -1715,31 +1707,12 @@ function wireEvents() {
   document.getElementById('sheet-cancel-btn').addEventListener('click', cancelSheet);
   document.getElementById('sheet-back-btn').addEventListener('click', sheetBackToClubs);
 
-  // ── Drawer: tap bar or handle to toggle ──────────────────────
-  document.getElementById('drawer-bar').addEventListener('click', toggleDrawer);
-  document.querySelector('.hole-drawer__handle').addEventListener('click', toggleDrawer);
+  // ── Stats bar: undo / end round ─────────────────────────────
+  document.getElementById('stats-undo-btn').addEventListener('click', undoLastShot);
+  document.getElementById('stats-end-btn').addEventListener('click', endRound);
 
-  // ── Drawer: swipe up/down to expand/collapse ─────────────────
-  let drawerTouchY = 0;
-  const drawerEl   = document.getElementById('hole-drawer');
-  drawerEl.addEventListener('touchstart', (e) => {
-    drawerTouchY = e.touches[0].clientY;
-  }, { passive: true });
-  drawerEl.addEventListener('touchend', (e) => {
-    const dy = drawerTouchY - e.changedTouches[0].clientY;
-    if (Math.abs(dy) > 20) {
-      if (dy > 0) expandDrawer();
-      else collapseDrawer();
-    }
-  }, { passive: true });
-
-  // ── Drawer: undo / scorecard / end round ────────────────────
-  document.getElementById('drawer-undo-btn').addEventListener('click', undoLastShot);
-  document.getElementById('drawer-scorecard-btn').addEventListener('click', () => {
-    collapseDrawer();
-    navigateTo('scorecard');
-  });
-  document.getElementById('drawer-end-btn').addEventListener('click', endRound);
+  // ── Finish hole button ────────────────────────────────────────
+  document.getElementById('finish-hole-btn').addEventListener('click', finishHole);
 
   // ── Scorecard: back to current hole (shown during active round) ──
   document.getElementById('scorecard-back-btn').addEventListener('click', () => navigateTo('hole-view'));

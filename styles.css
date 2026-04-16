@@ -83,6 +83,119 @@ html, body {
   overflow: hidden;
 }
 
+/* Reserve space at bottom for fixed stats bar (44px) + nav (60px) */
+#app.app--in-round {
+  height: calc(100dvh - 104px);
+  height: calc(100vh - 104px);
+}
+
+/* ── BOTTOM NAV BAR ───────────────────────────────────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: #fff;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: stretch;
+  z-index: 500;
+}
+
+.bottom-nav__btn {
+  flex: 1;
+  background: none;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-base);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bottom-nav__btn--active {
+  color: var(--color-primary);
+}
+
+/* ── STATS BAR ────────────────────────────────────────────── */
+.stats-bar {
+  position: fixed;
+  bottom: 60px;
+  left: 0;
+  right: 0;
+  height: 44px;
+  background: #fff;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-sm);
+  gap: var(--space-sm);
+  z-index: 400;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#stats-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.stats-undo-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-base);
+  cursor: pointer;
+  color: var(--color-text);
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+
+.stats-end-btn {
+  background: none;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-base);
+  cursor: pointer;
+  color: #b91c1c;
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+
+/* ── "DONE WITH HOLE" LINK ────────────────────────────────── */
+.finish-hole-link {
+  display: block;
+  background: #16a34a;
+  color: #fff;
+  text-decoration: none;
+  text-align: center;
+  padding: 14px var(--space-md);
+  font-size: 17px;
+  font-weight: 800;
+  font-family: var(--font-base);
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+.finish-hole-link:active {
+  background: #15803d;
+}
+
 /* ── NAV BAR ──────────────────────────────────────────────── */
 .nav {
   display: flex;

@@ -12,8 +12,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="styles.css?v=28" />
-  <script src="app.js?v=28" defer></script>
+  <link rel="stylesheet" href="styles.css?v=29" />
+  <script src="app.js?v=29" defer></script>
   <title>JEP GSS</title>
 </head>
 <body>
@@ -23,14 +23,6 @@
        One page app — screens toggled via JS.
   ============================================= -->
   <div id="app">
-
-    <!-- NAV BAR (shown during round, hidden on course / round-review screens) -->
-    <nav id="nav" class="nav nav--hidden">
-      <button class="nav__btn" data-screen="hole-view">Hole</button>
-      <button class="nav__btn" data-screen="scorecard">Card</button>
-      <button class="nav__btn" data-screen="history">History</button>
-      <button class="nav__btn" data-screen="yardage">Yardage</button>
-    </nav>
 
     <!-- ── SCREEN: COURSE DETECTION ─────────────────────────────── -->
     <section id="screen-course" class="screen screen--active">
@@ -123,8 +115,11 @@
         <button id="next-hole-btn" class="hole-header__btn" aria-label="Next hole">&#8594;</button>
       </div>
 
-      <!-- SVG hole diagram — fills remaining space, scrolls for long holes -->
+      <!-- SVG hole diagram — fills remaining space -->
       <div id="hole-svg-wrap" class="hole-svg-wrap"></div>
+
+      <!-- Done with Hole — always visible below SVG, wired via addEventListener in wireEvents() -->
+      <a href="javascript:void(0)" id="finish-hole-btn" class="finish-hole-link">&#10003; Done with Hole 1</a>
 
       <!-- ── Shot bottom sheet (slides up on map tap) ────────────
            Single panel: Step 1 = club grid, Step 2 = rating grid.
@@ -189,34 +184,6 @@
         </div>
       </div>
 
-      <!-- ── Bottom drawer ─────────────────────────────────────────
-           Collapsed: thin bar with handle + quick stats.
-           Expanded: full shot summary + undo + end round.
-           Swipe up/down or tap the bar to toggle.
-      ──────────────────────────────────────────────────────────── -->
-      <div id="hole-drawer" class="hole-drawer">
-        <div class="hole-drawer__handle"></div>
-        <div class="hole-drawer__bar" id="drawer-bar">
-          <span id="drawer-title">Hole 1 · Par 4</span>
-          <span id="drawer-quick-stats">0 strokes · GSS 0</span>
-        </div>
-        <div class="hole-drawer__detail" id="drawer-detail">
-          <div class="drawer-shots" id="drawer-shots">—</div>
-          <div class="drawer-stat-row">
-            <span>Strokes <b id="drawer-strokes">0</b></span>
-            <span>Putts <b id="drawer-putts">0</b></span>
-            <span>GSS <b id="drawer-gss">0</b></span>
-          </div>
-          <div class="drawer-actions">
-            <button id="drawer-undo-btn" class="btn btn--secondary" disabled>&#8630; Undo</button>
-            <button id="drawer-scorecard-btn" class="btn btn--secondary">&#128204; Card</button>
-            <button id="drawer-end-btn" class="btn btn--end-round">&#9873; End Round</button>
-          </div>
-          <button id="finish-hole-btn" class="btn btn--finish-hole"
-                  onclick="finishHole()"
-                  ontouchend="event.preventDefault(); event.stopPropagation(); finishHole();">&#10003; Done with Hole</button>
-        </div>
-      </div>
     </section>
 
     <!-- ── SCREEN: SCORECARD ──────────────────────────────────────
@@ -313,6 +280,23 @@
 
   <!-- Toast notification -->
   <div id="toast" class="toast" aria-live="polite"></div>
+
+  <!-- Permanent stats bar — fixed above nav, shown during round -->
+  <div id="stats-bar" class="stats-bar" hidden>
+    <span id="stats-text">Hole 1 · Par 4 · Strokes: 0 · GSS: 0</span>
+    <button id="stats-undo-btn" class="stats-undo-btn">&#8630; Undo</button>
+    <button id="stats-end-btn" class="stats-end-btn">End</button>
+  </div>
+
+  <!-- Permanent bottom nav — fixed at bottom, shown during round -->
+  <nav id="bottom-nav" class="bottom-nav" hidden>
+    <button class="bottom-nav__btn" data-screen="hole-view"
+            onclick="navigateTo('hole-view')">&#9975; Hole</button>
+    <button class="bottom-nav__btn" data-screen="scorecard"
+            onclick="navigateTo('scorecard')">&#128203; Scorecard</button>
+    <button class="bottom-nav__btn" data-screen="history"
+            onclick="navigateTo('history')">&#128200; History</button>
+  </nav>
 
 </body>
 </html>
