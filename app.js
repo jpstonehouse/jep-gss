@@ -873,14 +873,14 @@ function initHoleSVG(hole) {
   wrap.innerHTML = `
     <div id="hole-svg-container" style="position:relative;width:100%;height:calc(100% - 44px);">
       <svg id="hole-svg" viewBox="0 0 ${SVG_W} ${svgH}" width="100%" height="100%"
-           preserveAspectRatio="none"
+           preserveAspectRatio="xMidYMid slice"
            style="display:block;touch-action:manipulation;">
         <!-- fairway background -->
         <rect width="${SVG_W}" height="${svgH}" fill="#1e5c38"/>
-        <!-- fairway strip -->
+        <!-- fairway strip — only this element compresses with screen height -->
         <rect x="110" y="72" width="100" height="${svgH - 152}" fill="#2a7a4a" rx="45"/>
-        <!-- green (white ellipse, top) -->
-        <ellipse cx="160" cy="52" rx="65" ry="40" fill="white" opacity="0.92"/>
+        <!-- green (circle, top) — rx=ry so it stays circular with uniform scaling -->
+        <circle cx="160" cy="52" r="50" fill="white" opacity="0.92"/>
         <!-- hole cup -->
         <circle cx="160" cy="52" r="5" fill="#444"/>
         <!-- tee box (white rect, bottom) -->
@@ -1325,6 +1325,10 @@ function renderScorecard() {
   document.getElementById('scorecard-course-name').textContent =
     state.courseName ?? 'Unnamed Course';
 
+  // Show "← Hole" back button only during an active round
+  const backBtn = document.getElementById('scorecard-back-btn');
+  if (backBtn) backBtn.hidden = state.holes.length === 0;
+
   let frontStrokes = 0, frontPutts = 0, frontRating = 0, frontPar = 0;
   let backStrokes  = 0, backPutts  = 0, backRating  = 0, backPar  = 0;
 
@@ -1555,21 +1559,23 @@ function setOnGreen() {
 
 /**
  * Mark the current hole complete and advance to the next.
- * Called by the "In the Hole!" button.
+ * Called by the "In the Hole!" button via onclick and touchend.
+ * No confirm dialog — the tap is the confirmation.
  */
-function completeHole() {
+function inTheHole() {
   const hole = currentHoleData();
   if (!hole) return;
-  const strokes = calcStrokes(hole);
-  if (!confirm(`Hole ${hole.holeNumber} complete? (${strokes} stroke${strokes !== 1 ? 's' : ''})`)) return;
   hole.complete = true;
-  persist();
   if (state.currentHole < state.totalHoles) {
-    setState({ currentHole: state.currentHole + 1 });
+    state.currentHole++;
+    persist();
+    renderHoleView();
   } else {
     endRound();
   }
 }
+
+function completeHole() { inTheHole(); }
 
 function archiveRound() {
   try {
@@ -1739,9 +1745,16 @@ function wireEvents() {
     }
   }, { passive: true });
 
-  // ── Drawer: undo / end round ─────────────────────────────────
+  // ── Drawer: undo / scorecard / end round ────────────────────
   document.getElementById('drawer-undo-btn').addEventListener('click', undoLastShot);
+  document.getElementById('drawer-scorecard-btn').addEventListener('click', () => {
+    collapseDrawer();
+    navigateTo('scorecard');
+  });
   document.getElementById('drawer-end-btn').addEventListener('click', endRound);
+
+  // ── Scorecard: back to current hole (shown during active round) ──
+  document.getElementById('scorecard-back-btn').addEventListener('click', () => navigateTo('hole-view'));
 
   // ── Scorecard: tap row → go to that hole ────────────────────
   document.getElementById('scorecard-body').addEventListener('click', (e) => {
@@ -1788,8 +1801,10 @@ function wireEvents() {
     navigateTo('history');
   });
 
-  // ── "In the Hole!" standalone button (shown after any putt is logged) ──
-  document.getElementById('in-hole-btn').addEventListener('click', completeHole);
+  // ── "In the Hole!" — wired via both onclick and touchend to work on iOS PWA ──
+  const inHoleBtn = document.getElementById('in-hole-btn');
+  inHoleBtn.onclick = inTheHole;
+  inHoleBtn.addEventListener('touchend', (e) => { e.preventDefault(); inTheHole(); });
 
   // ── API debug overlay: close ─────────────────────────────────
   document.getElementById('api-debug-close').addEventListener('click', () => {

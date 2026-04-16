@@ -370,7 +370,7 @@ html, body {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: 0 -2px 14px rgba(0,0,0,0.12);
   overflow: hidden;
-  height: 220px;
+  height: 240px;
   /* collapsed: only 44px (handle + bar) visible */
   transform: translateY(calc(100% - 44px));
   transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
@@ -859,6 +859,30 @@ html, body {
 }
 
 /* ── SCORECARD SCREEN ─────────────────────────────────────── */
+.scorecard-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.btn--scorecard-back {
+  background: none;
+  border: none;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-family: var(--font-base);
+  color: var(--color-primary);
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
+.btn--scorecard-back:active {
+  opacity: 0.6;
+}
+
 .scorecard-meta {
   font-size: var(--text-sm);
   color: var(--color-text-muted);

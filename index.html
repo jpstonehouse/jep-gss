@@ -12,8 +12,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="styles.css?v=25" />
-  <script src="app.js?v=25" defer></script>
+  <link rel="stylesheet" href="styles.css?v=26" />
+  <script src="app.js?v=26" defer></script>
   <title>JEP GSS</title>
 </head>
 <body>
@@ -214,6 +214,7 @@
           </div>
           <div class="drawer-actions">
             <button id="drawer-undo-btn" class="btn btn--secondary" disabled>&#8630; Undo</button>
+            <button id="drawer-scorecard-btn" class="btn btn--secondary">&#128204; Card</button>
             <button id="drawer-end-btn" class="btn btn--end-round">&#9873; End Round</button>
           </div>
         </div>
@@ -225,7 +226,10 @@
     ─────────────────────────────────────────────────────────────── -->
     <section id="screen-scorecard" class="screen">
       <div class="screen__header">
-        <h2 class="screen__title">Scorecard</h2>
+        <div class="scorecard-header-row">
+          <button id="scorecard-back-btn" class="btn--scorecard-back" hidden>&#8592; Hole</button>
+          <h2 class="screen__title">Scorecard</h2>
+        </div>
         <div id="scorecard-course-name" class="scorecard-meta"></div>
       </div>
 
