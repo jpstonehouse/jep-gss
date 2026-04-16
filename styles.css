@@ -236,11 +236,8 @@ html, body {
 .hole-svg-wrap {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
   z-index: 1;
-  padding-bottom: 44px; /* room for always-visible drawer bar */
 }
 
 /* ── HTML SHOT DOTS (fixed screen size overlay) ───────────── */
@@ -576,12 +573,31 @@ html, body {
 .rating-chip--bad2    { background: var(--color-bad2); }
 .rating-chip--penalty { background: var(--color-penalty); }
 
-/* ── "IN THE HOLE!" RATING GRID BUTTON ───────────────────── */
-.rating-btn--in-hole {
-  width: 100%;
+/* ── "IN THE HOLE!" STANDALONE BUTTON ───────────────────── */
+.in-hole-btn {
+  position: absolute;
+  bottom: 56px;    /* 44px drawer bar + 12px gap */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
   background: #16a34a;
-  margin-top: var(--space-sm);
-  font-size: var(--text-md);
+  color: #fff;
+  border: none;
+  border-radius: 24px;
+  padding: 14px 32px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.30);
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.in-hole-btn:active {
+  background: #15803d;
+  transform: translateX(-50%) scale(0.96);
 }
 
 /* ── END ROUND BUTTON ─────────────────────────────────────── */

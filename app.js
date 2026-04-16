@@ -67,7 +67,7 @@ const LOCAL_COURSES = [
       { par: 3, yardage: 172, tee: { lat: 34.544004, lng: -119.867940 }, green: { lat: 34.543541, lng: -119.866385 } },
       { par: 4, yardage: 314, tee: { lat: 34.543528, lng: -119.865590 }, green: { lat: 34.545163, lng: -119.867919 } },
       { par: 4, yardage: 379, tee: { lat: 34.545522, lng: -119.869312 }, green: { lat: 34.546306, lng: -119.872451 } },
-      { par: 4, yardage: 166, tee: { lat: 34.546001, lng: -119.873287 }, green: { lat: 34.547203, lng: -119.873879 } },
+      { par: 3, yardage: 166, tee: { lat: 34.546001, lng: -119.873287 }, green: { lat: 34.547203, lng: -119.873879 } },
       { par: 5, yardage: 585, tee: { lat: 34.547811, lng: -119.874107 }, green: { lat: 34.550631, lng: -119.878284 } },
       { par: 3, yardage: 165, tee: { lat: 34.550806, lng: -119.879079 }, green: { lat: 34.550497, lng: -119.880689 } },
       { par: 4, yardage: 388, tee: { lat: 34.550018, lng: -119.880603 }, green: { lat: 34.549058, lng: -119.876947 } },
@@ -775,8 +775,8 @@ function updateWakeLock() {
 // SVG HOLE RENDERER
 // =============================================================
 
-const SVG_W       = 320;   // fixed viewBox width
-const PX_PER_YARD = 3;     // vertical scale: 3 SVG units per yard
+const SVG_W = 320;  // fixed viewBox width
+const SVG_H = 600;  // fixed viewBox height — SVG always fills the container, no scrolling
 
 let pendingLL     = null;  // { lat, lng } real GPS of pending tap (null for no-GPS courses)
 let pendingSvgPt  = null;  // { x, y } SVG-space coords of pending tap
@@ -798,9 +798,9 @@ const SHOT_COLORS = {
   'L':  { bg: '#ede9fe', border: '#7c3aed', text: '#6d28d9' },
 };
 
-/** SVG height in viewBox units from hole yardage. */
-function getSvgHeight(hole) {
-  return Math.max((hole.yardage || 150) * PX_PER_YARD, 350);
+/** SVG viewBox height — fixed so the diagram always fits the screen without scrolling. */
+function getSvgHeight() {
+  return SVG_H;
 }
 
 /**
@@ -851,30 +851,29 @@ function svgToGpsCoord(svgX, svgY, hole, svgH, proj) {
 
 /**
  * Build (or rebuild) the SVG hole diagram inside #hole-svg-wrap.
- * Green background, white ellipse at top (green), white rect at bottom (tee).
- * Height scales with yardage (3 px/yd). Container scrolls if taller than viewport.
+ * The SVG fills the available screen height exactly (no scrolling).
+ * Green ellipse is always at the top; tee box always at the bottom.
  */
 function initHoleSVG(hole) {
   const wrap = document.getElementById('hole-svg-wrap');
   if (!wrap) return;
 
-  const svgH        = getSvgHeight(hole);
+  const svgH        = getSvgHeight();
   const hasTeeGreen = !!(hole.tee && hole.green);
   svgProjection = getHoleProjection(hole, svgH);
   svgInitHole   = hole.holeNumber;
   pendingSvgPt  = null;
   pendingLL     = null;
 
-  const teeY      = svgH - 70;
-  const noGpsMsg  = hasTeeGreen ? '' :
-    `<text x="160" y="${(svgH / 2).toFixed(0)}" text-anchor="middle"
+  const teeY     = svgH - 70;
+  const noGpsMsg = hasTeeGreen ? '' :
+    `<text x="160" y="300" text-anchor="middle"
            font-size="14" fill="rgba(255,255,255,0.7)">Tap to plot shots</text>`;
-  // Bear sits on the tee box; hide it if shots already exist (e.g. returning to hole)
-  const bearHide  = hole.shots.length > 0 ? ' display="none"' : '';
 
   wrap.innerHTML = `
-    <div id="hole-svg-container" style="position:relative;width:100%;">
-      <svg id="hole-svg" viewBox="0 0 ${SVG_W} ${svgH}" width="100%"
+    <div id="hole-svg-container" style="position:relative;width:100%;height:calc(100% - 44px);">
+      <svg id="hole-svg" viewBox="0 0 ${SVG_W} ${svgH}" width="100%" height="100%"
+           preserveAspectRatio="none"
            style="display:block;touch-action:manipulation;">
         <!-- fairway background -->
         <rect width="${SVG_W}" height="${svgH}" fill="#1e5c38"/>
@@ -894,11 +893,6 @@ function initHoleSVG(hole) {
         <circle id="svg-temp" cx="-200" cy="-200" r="12"
                 fill="rgba(255,255,255,0.25)" stroke="white" stroke-width="2.5"
                 stroke-dasharray="5 3" pointer-events="none"/>
-        <!-- Pants Bear on the tee box — tap to dismiss and start plotting -->
-        <image id="svg-bear" href="golf-golfing.gif"
-               x="125" y="${teeY - 30}" width="70" height="70"
-               preserveAspectRatio="xMidYMid meet"
-               style="cursor:pointer;"${bearHide}/>
       </svg>
       <!-- Shot dots as HTML elements — fixed screen size regardless of SVG scale -->
       <div id="shot-dot-overlay"
@@ -906,18 +900,6 @@ function initHoleSVG(hole) {
     </div>`;
 
   document.getElementById('hole-svg').addEventListener('click', handleSVGTap);
-
-  // Bear tap: dismiss immediately on touchend (iOS SVG <image> may not fire click)
-  const bearEl = document.getElementById('svg-bear');
-  if (bearEl) {
-    const dismissBear = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      bearEl.setAttribute('display', 'none');
-    };
-    bearEl.addEventListener('touchend', dismissBear);
-    bearEl.addEventListener('click', dismissBear);
-  }
 
   // Re-draw fixed-position dots whenever the layout changes (resize, orientation)
   if (svgResizeHandler) window.removeEventListener('resize', svgResizeHandler);
@@ -1096,8 +1078,6 @@ function openShotSheet(shotNum) {
 function closeShotSheet() {
   document.getElementById('shot-sheet').classList.remove('shot-sheet--open');
   pickerClub = null;
-  const inHoleBtnGrid = document.getElementById('rating-in-hole-btn');
-  if (inHoleBtnGrid) inHoleBtnGrid.hidden = true;
 }
 
 /** Cancel — close sheet, remove temp dot, clear pending state. */
@@ -1116,9 +1096,6 @@ function sheetSelectClub(club) {
   document.getElementById('sheet-rate-label').textContent = `${label} — Rate the shot`;
   document.getElementById('sheet-step-clubs').classList.add('shot-sheet__step--hidden');
   document.getElementById('sheet-step-ratings').classList.remove('shot-sheet__step--hidden');
-  // Show "In the Hole!" only when putter is selected
-  const inHoleBtnGrid = document.getElementById('rating-in-hole-btn');
-  if (inHoleBtnGrid) inHoleBtnGrid.hidden = (club !== 'P');
 }
 
 /** Back button — return to Step 1 (club selection). */
@@ -1161,52 +1138,6 @@ function logShotFromSheet(rating) {
   }
 }
 
-/**
- * "In the Hole!" tapped in the rating grid — logs the current putter shot
- * with a neutral rating, then completes the hole and advances.
- */
-function inTheHoleFromSheet() {
-  if (!pickerClub) return;
-  if (!pendingLL && !pendingSvgPt) return;
-
-  const hole = currentHoleData();
-  if (!hole) return;
-
-  const svgH    = getSvgHeight(hole);
-  const lat     = pendingLL?.lat  ?? null;
-  const lng     = pendingLL?.lng  ?? null;
-  const svgXPct = pendingSvgPt ? pendingSvgPt.x / SVG_W : null;
-  const svgYPct = pendingSvgPt ? pendingSvgPt.y / svgH  : null;
-
-  addShot(pickerClub, '-', lat, lng, svgXPct, svgYPct);
-  closeShotSheet();
-  removeTempDot();
-  pendingSvgPt = null;
-  pendingLL    = null;
-
-  drawShotsSVG(hole);
-
-  hole.complete = true;
-  persist();
-
-  if (state.currentHole < state.totalHoles) {
-    setState({ currentHole: state.currentHole + 1 });
-  } else {
-    if (confirm('Last hole complete! End round and save to history?')) {
-      archiveRound();
-      destroyHoleSVG();
-      setState({
-        courseName:   null,
-        totalHoles:   18,
-        holes:        [],
-        currentHole:  1,
-        mockMode:     false,
-        activeScreen: 'course',
-      });
-    }
-  }
-}
-
 // =============================================================
 // BOTTOM DRAWER
 // =============================================================
@@ -1244,6 +1175,10 @@ function updateHoleDrawer() {
   // Undo button state
   const undoBtn = document.getElementById('drawer-undo-btn');
   if (undoBtn) undoBtn.disabled = hole.shots.length === 0;
+
+  // "In the Hole!" button: visible after any putt is logged
+  const inHoleBtn = document.getElementById('in-hole-btn');
+  if (inHoleBtn) inHoleBtn.hidden = !hole.shots.some(s => s.isPutt);
 }
 
 function expandDrawer() {
@@ -1853,8 +1788,8 @@ function wireEvents() {
     navigateTo('history');
   });
 
-  // ── "In the Hole!" (in rating grid, shown when putter selected) ──
-  document.getElementById('rating-in-hole-btn').addEventListener('click', inTheHoleFromSheet);
+  // ── "In the Hole!" standalone button (shown after any putt is logged) ──
+  document.getElementById('in-hole-btn').addEventListener('click', completeHole);
 
   // ── API debug overlay: close ─────────────────────────────────
   document.getElementById('api-debug-close').addEventListener('click', () => {
