@@ -161,6 +161,25 @@ html, body {
   white-space: nowrap;
 }
 
+.stats-done-btn {
+  background: #16a34a;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-base);
+  cursor: pointer;
+  color: #fff;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+
+.stats-done-btn:active {
+  background: #15803d;
+}
+
 .stats-end-btn {
   background: none;
   border: 1px solid #fca5a5;
@@ -173,27 +192,6 @@ html, body {
   color: #b91c1c;
   touch-action: manipulation;
   white-space: nowrap;
-}
-
-/* ── "DONE WITH HOLE" LINK ────────────────────────────────── */
-.finish-hole-link {
-  display: block;
-  background: #16a34a;
-  color: #fff;
-  text-decoration: none;
-  text-align: center;
-  padding: 14px var(--space-md);
-  font-size: 17px;
-  font-weight: 800;
-  font-family: var(--font-base);
-  flex-shrink: 0;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  cursor: pointer;
-}
-
-.finish-hole-link:active {
-  background: #15803d;
 }
 
 /* ── NAV BAR ──────────────────────────────────────────────── */
@@ -349,7 +347,6 @@ html, body {
 .hole-svg-wrap {
   flex: 1;
   min-height: 0;
-  max-height: calc(100vh - 220px); /* leave room for Done with Hole button */
   overflow: hidden;
   z-index: 1;
 }
@@ -395,16 +392,16 @@ html, body {
 /* ── SHOT BOTTOM SHEET ────────────────────────────────────── */
 .shot-sheet {
   position: fixed;
-  bottom: 0;
+  bottom: 104px; /* sit above stats bar (44px) + nav (60px) */
   left: 0;
   right: 0;
   z-index: 300;
   background: var(--color-surface);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: 0 -4px 24px rgba(0,0,0,0.18);
-  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
-  max-height: 85vh;
-  overflow-y: auto;
+  padding-bottom: var(--space-md);
+  max-height: 50vh;
+  overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
   /* hidden by default — no display:none, no hidden attr */
   opacity: 0;

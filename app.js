@@ -1261,10 +1261,6 @@ function renderHoleView() {
     initHoleSVG(hole);
   }
 
-  // Update finish button text with current hole number
-  const finishBtn = document.getElementById('finish-hole-btn');
-  if (finishBtn) finishBtn.textContent = `\u2713 Done with Hole ${hole.holeNumber}`;
-
   updateHoleDrawer();
 }
 
@@ -1711,8 +1707,7 @@ function wireEvents() {
   document.getElementById('stats-undo-btn').addEventListener('click', undoLastShot);
   document.getElementById('stats-end-btn').addEventListener('click', endRound);
 
-  // ── Finish hole button ────────────────────────────────────────
-  document.getElementById('finish-hole-btn').addEventListener('click', finishHole);
+  // "✓ Done" button in stats bar uses inline onclick/ontouchend in HTML.
 
   // ── Scorecard: back to current hole (shown during active round) ──
   document.getElementById('scorecard-back-btn').addEventListener('click', () => navigateTo('hole-view'));
@@ -1760,7 +1755,7 @@ function wireEvents() {
     navigateTo('history');
   });
 
-  // finish-hole-btn is wired via inline onclick/ontouchend directly on the HTML element.
+  // stats-done-btn (✓ Done) is wired via inline onclick/ontouchend in the HTML stats bar.
 
   // ── API debug overlay: close ─────────────────────────────────
   document.getElementById('api-debug-close').addEventListener('click', () => {

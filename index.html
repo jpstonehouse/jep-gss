@@ -12,8 +12,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="styles.css?v=30" />
-  <script src="app.js?v=30" defer></script>
+  <link rel="stylesheet" href="styles.css?v=31" />
+  <script src="app.js?v=31" defer></script>
   <title>JEP GSS</title>
 </head>
 <body>
@@ -117,9 +117,6 @@
 
       <!-- SVG hole diagram — fills remaining space -->
       <div id="hole-svg-wrap" class="hole-svg-wrap"></div>
-
-      <!-- Done with Hole — always visible below SVG, wired via addEventListener in wireEvents() -->
-      <a href="javascript:void(0)" id="finish-hole-btn" class="finish-hole-link">&#10003; Done with Hole 1</a>
 
       <!-- ── Shot bottom sheet (slides up on map tap) ────────────
            Single panel: Step 1 = club grid, Step 2 = rating grid.
@@ -285,6 +282,9 @@
   <div id="stats-bar" class="stats-bar" hidden>
     <span id="stats-text">Hole 1 · Par 4 · Strokes: 0 · GSS: 0</span>
     <button id="stats-undo-btn" class="stats-undo-btn">&#8630; Undo</button>
+    <button id="stats-done-btn" class="stats-done-btn"
+            onclick="finishHole()"
+            ontouchend="event.preventDefault(); finishHole();">&#10003; Done</button>
     <button id="stats-end-btn" class="stats-end-btn">End</button>
   </div>
 
