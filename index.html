@@ -12,8 +12,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="styles.css?v=27" />
-  <script src="app.js?v=27" defer></script>
+  <link rel="stylesheet" href="styles.css?v=28" />
+  <script src="app.js?v=28" defer></script>
   <title>JEP GSS</title>
 </head>
 <body>
@@ -189,13 +189,6 @@
         </div>
       </div>
 
-      <!-- ── "In the Hole!" button — shown after any putt is logged ─
-           Positioned above the drawer bar. Tapping completes the hole.
-      ──────────────────────────────────────────────────────────── -->
-      <button id="in-hole-btn" class="in-hole-btn" hidden
-              onclick="inTheHole()"
-              ontouchend="event.preventDefault(); inTheHole();">&#9971; In the Hole!</button>
-
       <!-- ── Bottom drawer ─────────────────────────────────────────
            Collapsed: thin bar with handle + quick stats.
            Expanded: full shot summary + undo + end round.
@@ -219,6 +212,9 @@
             <button id="drawer-scorecard-btn" class="btn btn--secondary">&#128204; Card</button>
             <button id="drawer-end-btn" class="btn btn--end-round">&#9873; End Round</button>
           </div>
+          <button id="finish-hole-btn" class="btn btn--finish-hole"
+                  onclick="finishHole()"
+                  ontouchend="event.preventDefault(); event.stopPropagation(); finishHole();">&#10003; Done with Hole</button>
         </div>
       </div>
     </section>

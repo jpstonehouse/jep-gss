@@ -573,31 +573,25 @@ html, body {
 .rating-chip--bad2    { background: var(--color-bad2); }
 .rating-chip--penalty { background: var(--color-penalty); }
 
-/* ── "IN THE HOLE!" STANDALONE BUTTON ───────────────────── */
-.in-hole-btn {
-  position: absolute;
-  bottom: 56px;    /* 44px drawer bar + 12px gap */
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 200;
+/* ── "DONE WITH HOLE" BUTTON (inside expanded drawer) ────── */
+.btn--finish-hole {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-sm);
+  padding: 13px var(--space-md);
   background: #16a34a;
   color: #fff;
   border: none;
-  border-radius: 24px;
-  padding: 14px 32px;
-  font-size: 18px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
   font-weight: 800;
-  letter-spacing: 0.01em;
-  box-shadow: 0 4px 18px rgba(0,0,0,0.30);
   cursor: pointer;
-  white-space: nowrap;
-  -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.in-hole-btn:active {
+.btn--finish-hole:active {
   background: #15803d;
-  transform: translateX(-50%) scale(0.96);
 }
 
 /* ── END ROUND BUTTON ─────────────────────────────────────── */

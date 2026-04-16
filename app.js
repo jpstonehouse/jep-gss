@@ -1176,9 +1176,6 @@ function updateHoleDrawer() {
   const undoBtn = document.getElementById('drawer-undo-btn');
   if (undoBtn) undoBtn.disabled = hole.shots.length === 0;
 
-  // "In the Hole!" button: visible after any putt is logged
-  const inHoleBtn = document.getElementById('in-hole-btn');
-  if (inHoleBtn) inHoleBtn.hidden = !hole.shots.some(s => s.isPutt);
 }
 
 function expandDrawer() {
@@ -1555,25 +1552,18 @@ function setOnGreen() {
   updateHoleDrawer();
 }
 
-/**
- * Mark the current hole complete and advance to the next.
- * Called by the "In the Hole!" button via onclick and touchend.
- * No confirm dialog — the tap is the confirmation.
- */
-function inTheHole() {
-  const hole = currentHoleData();
-  if (!hole) return;
+function finishHole() {
+  const hole = state.holes[state.currentHole - 1];
   hole.complete = true;
   if (state.currentHole < state.totalHoles) {
-    state.currentHole++;
-    persist();
-    renderHoleView();
+    state.currentHole += 1;
   } else {
     endRound();
+    return;
   }
+  persist();
+  renderHoleView();
 }
-
-function completeHole() { inTheHole(); }
 
 function archiveRound() {
   try {
@@ -1797,7 +1787,7 @@ function wireEvents() {
     navigateTo('history');
   });
 
-  // "In the Hole!" button is wired via inline onclick/ontouchend in the HTML element.
+  // finish-hole-btn is wired via inline onclick/ontouchend directly on the HTML element.
 
   // ── API debug overlay: close ─────────────────────────────────
   document.getElementById('api-debug-close').addEventListener('click', () => {
